@@ -3064,12 +3064,50 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
               if (shouldMergeWithExisting && seriestoMergeWith) {
                 console.log('Merging split series back with original:', seriestoMergeWith.id);
 
-                // Remove the UNTIL constraint from the series we're merging with
+                // When merging back, we need to ensure continuity
+                // The series we're merging with should extend to cover the gap
+                const splitSeriesStart = new Date(modal.event.start);
+
+                // Find the UNTIL date of the series we're merging with
+                const untilMatch = seriestoMergeWith.recurrence?.match(/UNTIL=([^;]+)/);
+                let shouldUpdateUntil = false;
+
+                if (untilMatch) {
+                  // Parse the UNTIL date
+                  const untilStr = untilMatch[1];
+                  const year = parseInt(untilStr.substring(0, 4));
+                  const month = parseInt(untilStr.substring(4, 6)) - 1;
+                  const day = parseInt(untilStr.substring(6, 8));
+                  const currentUntil = new Date(year, month, day, 23, 59, 59);
+
+                  // Check if there's a gap between the UNTIL date and the split series start
+                  const daysDiff = Math.floor((splitSeriesStart.getTime() - currentUntil.getTime()) / (1000 * 60 * 60 * 24));
+
+                  // If there's a gap of more than the recurrence interval, we should update UNTIL
+                  if (seriestoMergeWith.recurrence?.includes('FREQ=DAILY') && daysDiff > 1) {
+                    shouldUpdateUntil = true;
+                  } else if (seriestoMergeWith.recurrence?.includes('FREQ=WEEKLY') && daysDiff > 7) {
+                    shouldUpdateUntil = true;
+                  }
+                }
+
                 const updatedEvents = baseEvents.map(e => {
                   if (e.id === seriestoMergeWith.id) {
                     let updatedRecurrence = e.recurrence || '';
-                    // Remove UNTIL constraint
-                    updatedRecurrence = updatedRecurrence.replace(/;?UNTIL=[^;]*/g, '');
+
+                    if (shouldUpdateUntil) {
+                      // Update UNTIL to the day before the split series starts
+                      const newUntil = new Date(splitSeriesStart);
+                      newUntil.setDate(newUntil.getDate() - 1);
+                      newUntil.setHours(23, 59, 59, 999);
+                      const newUntilStr = newUntil.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+                      updatedRecurrence = updatedRecurrence.replace(/;?UNTIL=[^;]*/g, '');
+                      updatedRecurrence = `${updatedRecurrence};UNTIL=${newUntilStr}`;
+                    } else {
+                      // Remove UNTIL constraint entirely to merge seamlessly
+                      updatedRecurrence = updatedRecurrence.replace(/;?UNTIL=[^;]*/g, '');
+                    }
+
                     return {
                       ...e,
                       recurrence: updatedRecurrence
@@ -3094,7 +3132,15 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                 const baseEvent = baseEvents.find(e => e.id === parentId);
                 let untilDateTime = new Date(eventDate);
 
-                if (baseEvent?.recurrence) {
+                // Check if the parent series already has an UNTIL date (meaning it's already a split)
+                const hasExistingUntil = baseEvent?.recurrence?.includes('UNTIL=');
+
+                if (hasExistingUntil || isSplitSeries) {
+                  // For already split series, just set UNTIL to just before this specific occurrence
+                  // Don't try to calculate based on frequency as the series might have gaps
+                  untilDateTime.setMinutes(untilDateTime.getMinutes() - 1);
+                } else if (baseEvent?.recurrence) {
+                  // For original series, calculate based on frequency
                   if (baseEvent.recurrence.includes('FREQ=DAILY')) {
                     // For daily events, go back 1 day and set to end of that day
                     untilDateTime.setDate(untilDateTime.getDate() - 1);
