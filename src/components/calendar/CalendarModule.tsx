@@ -2502,10 +2502,7 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
 
               if (dayIndex < 0 || dayIndex >= weekDates.length) return null;
 
-              const left = (dayIndex * dayColumnWidth) + 2;
-              const width = dayColumnWidth - 4;
-
-              let top: number, height: number;
+              let previewElements = [];
 
               if (draggedEvent) {
                 const newTime = dragEnd.time;
@@ -2513,11 +2510,49 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                 const originalEnd = new Date(draggedEvent.end);
                 const duration = (originalEnd.getTime() - originalStart.getTime()) / (1000 * 60 * 60);
 
-                const startHour = newTime.getHours() + newTime.getMinutes() / 60;
-                top = startHour * 64;
-                height = duration * 64;
+                // Calculate new start and end times based on drag position
+                const targetDate = weekDates[dayIndex];
+                const newStart = new Date(targetDate);
+                newStart.setHours(newTime.getHours(), newTime.getMinutes(), 0, 0);
+
+                const newEnd = new Date(newStart);
+                newEnd.setTime(newStart.getTime() + (originalEnd.getTime() - originalStart.getTime()));
+
+                // Check if event spans multiple days
+                const startDay = new Date(newStart);
+                startDay.setHours(0, 0, 0, 0);
+                const endDay = new Date(newEnd);
+                endDay.setHours(0, 0, 0, 0);
+
+                // Render preview on each day the event would span
+                for (let i = 0; i < weekDates.length; i++) {
+                  const currentDay = new Date(weekDates[i]);
+                  currentDay.setHours(0, 0, 0, 0);
+                  const nextDay = new Date(currentDay);
+                  nextDay.setDate(nextDay.getDate() + 1);
+
+                  // Skip if event doesn't overlap with this day
+                  if (newEnd <= currentDay || newStart >= nextDay) continue;
+
+                  // Calculate position for this day's portion
+                  const dayStart = newStart > currentDay ? newStart : currentDay;
+                  const dayEnd = newEnd < nextDay ? newEnd : nextDay;
+
+                  const startHour = dayStart.getHours() + dayStart.getMinutes() / 60;
+                  const endHour = dayEnd.getHours() + dayEnd.getMinutes() / 60;
+
+                  // For events continuing to next day, extend to end of day
+                  const adjustedEndHour = dayEnd < nextDay ? endHour : 24;
+
+                  const top = (dayStart > currentDay ? startHour : 0) * 64;
+                  const height = (adjustedEndHour - (dayStart > currentDay ? startHour : 0)) * 64;
+                  const left = (i * dayColumnWidth) + 2;
+                  const width = dayColumnWidth - 4;
+
+                  previewElements.push({ dayIndex: i, top, height, left, width });
+                }
               } else if (dragStart) {
-                // Show the actual drag range for visual feedback
+                // Creating a new event - check if it spans multiple days
                 const rawStart = new Date(Math.min(dragStart.time.getTime(), dragEnd.time.getTime()));
                 const rawEnd = new Date(Math.max(dragStart.time.getTime(), dragEnd.time.getTime()));
 
@@ -2525,62 +2560,116 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                 const startTime = snapTime(rawStart, 'floor');
                 const endTime = snapTime(rawEnd, 'ceil');
 
-                const startHour = startTime.getHours() + startTime.getMinutes() / 60;
-                const endHour = endTime.getHours() + endTime.getMinutes() / 60;
+                // Check if creation spans multiple days
+                const startDay = new Date(startTime);
+                startDay.setHours(0, 0, 0, 0);
+                const endDay = new Date(endTime);
+                endDay.setHours(0, 0, 0, 0);
 
-                top = startHour * 64;
-                // Show at least a thin line (8px) even for very short drags
-                height = Math.max((endHour - startHour) * 64, 8);
+                // Render preview on each day the event would span
+                for (let i = 0; i < weekDates.length; i++) {
+                  const currentDay = new Date(weekDates[i]);
+                  currentDay.setHours(0, 0, 0, 0);
+                  const nextDay = new Date(currentDay);
+                  nextDay.setDate(nextDay.getDate() + 1);
+
+                  // Skip if event doesn't overlap with this day
+                  if (endTime <= currentDay || startTime >= nextDay) continue;
+
+                  // Calculate position for this day's portion
+                  const dayStart = startTime > currentDay ? startTime : currentDay;
+                  const dayEnd = endTime < nextDay ? endTime : nextDay;
+
+                  const startHour = dayStart.getHours() + dayStart.getMinutes() / 60;
+                  const endHour = dayEnd.getHours() + dayEnd.getMinutes() / 60;
+
+                  // For events continuing to next day, extend to end of day
+                  const adjustedEndHour = dayEnd < nextDay ? endHour : 24;
+
+                  const top = (dayStart > currentDay ? startHour : 0) * 64;
+                  const height = Math.max((adjustedEndHour - (dayStart > currentDay ? startHour : 0)) * 64, 8);
+                  const left = (i * dayColumnWidth) + 2;
+                  const width = dayColumnWidth - 4;
+
+                  previewElements.push({ dayIndex: i, top, height, left, width });
+                }
               } else {
                 return null;
               }
 
+              // If no preview elements, return null
+              if (previewElements.length === 0) return null;
+
               // Check if the new position should be dimmed
               const now = new Date();
-              const dragTime = draggedEvent ? dragEnd.time : (dragStart && dragEnd ?
-                new Date(Math.min(dragStart.time.getTime(), dragEnd.time.getTime())) : now);
               const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
               const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
 
-              const isToday = dragTime >= todayStart && dragTime < todayEnd;
-              const shouldDim = !isToday; // Dim everything except today
-
               const color = draggedEvent?.color ?? 'blue';
-              const bgColor = shouldDim
-                ? (color === 'purple'
-                  ? 'bg-purple-300/50 border-purple-400'
-                  : color === 'green'
-                  ? 'bg-green-300/50 border-green-400'
-                  : color === 'yellow'
-                  ? 'bg-yellow-300/50 border-yellow-400'
-                  : color === 'pink'
-                  ? 'bg-pink-300/50 border-pink-400'
-                  : color === 'gray'
-                  ? 'bg-gray-300/50 border-gray-400'
-                  : 'bg-blue-300/50 border-blue-400')
-                : (color === 'purple'
-                  ? 'bg-purple-400/50 border-purple-500'
-                  : color === 'green'
-                  ? 'bg-green-400/50 border-green-500'
-                  : color === 'yellow'
-                  ? 'bg-yellow-400/50 border-yellow-500'
-                  : color === 'pink'
-                  ? 'bg-pink-400/50 border-pink-500'
-                  : color === 'gray'
-                  ? 'bg-gray-400/50 border-gray-500'
-                  : 'bg-blue-400/50 border-blue-500');
 
+              // Render all preview elements
               return (
-                <div
-                  className={`absolute ${bgColor} border-l-4 rounded pointer-events-none opacity-70 event-creating`}
-                  style={{ left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` }}
-                >
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-xs text-white font-medium">
-                      {draggedEvent ? 'Moving' : 'Creating'}
-                    </span>
-                  </div>
-                </div>
+                <>
+                  {previewElements.map((preview, index) => {
+                    const previewDate = weekDates[preview.dayIndex];
+                    const isToday = previewDate >= todayStart && previewDate < todayEnd;
+                    const shouldDim = !isToday;
+
+                    const bgColor = shouldDim
+                      ? (color === 'purple'
+                        ? 'bg-purple-300/50 border-purple-400'
+                        : color === 'green'
+                        ? 'bg-green-300/50 border-green-400'
+                        : color === 'yellow'
+                        ? 'bg-yellow-300/50 border-yellow-400'
+                        : color === 'pink'
+                        ? 'bg-pink-300/50 border-pink-400'
+                        : color === 'gray'
+                        ? 'bg-gray-300/50 border-gray-400'
+                        : 'bg-blue-300/50 border-blue-400')
+                      : (color === 'purple'
+                        ? 'bg-purple-400/50 border-purple-500'
+                        : color === 'green'
+                        ? 'bg-green-400/50 border-green-500'
+                        : color === 'yellow'
+                        ? 'bg-yellow-400/50 border-yellow-500'
+                        : color === 'pink'
+                        ? 'bg-pink-400/50 border-pink-500'
+                        : color === 'gray'
+                        ? 'bg-gray-400/50 border-gray-500'
+                        : 'bg-blue-400/50 border-blue-500');
+
+                    // Determine if this is the first or last segment
+                    const isFirstSegment = index === 0;
+                    const isLastSegment = index === previewElements.length - 1;
+
+                    return (
+                      <div
+                        key={`preview-${preview.dayIndex}`}
+                        className={`absolute ${bgColor} border-l-4 pointer-events-none opacity-70 event-creating ${
+                          isFirstSegment && !isLastSegment ? 'rounded-t' :
+                          isLastSegment && !isFirstSegment ? 'rounded-b' :
+                          'rounded'
+                        }`}
+                        style={{
+                          left: `${preview.left}px`,
+                          top: `${preview.top}px`,
+                          width: `${preview.width}px`,
+                          height: `${preview.height}px`
+                        }}
+                      >
+                        {/* Only show text on the first segment */}
+                        {isFirstSegment && (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-xs text-white font-medium">
+                              {draggedEvent ? 'Moving' : 'Creating'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </>
               );
             })()}
               </div>

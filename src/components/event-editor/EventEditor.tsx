@@ -101,8 +101,10 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
         const timer = setTimeout(() => {
           if (titleInputRef.current) {
             titleInputRef.current.focus({ preventScroll: true });
-            // Select all text for brand new events so user can immediately type
-            titleInputRef.current.select();
+            // Only select text if there's actually text to select (not for empty titles)
+            if (titleInputRef.current.value.trim()) {
+              titleInputRef.current.select();
+            }
           }
         }, 50);
 
@@ -350,7 +352,12 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
           activeElement.getAttribute('contenteditable') === 'true'
         );
 
-        // If not in a text field, delete the entire event
+        // Special case: if we're in the title input and it's empty, let the input's handler delete the event
+        const isTitleInput = activeElement === titleInputRef.current;
+        const isTitleEmpty = !editedEvent?.title?.trim();
+
+        // If not in a text field, OR if in the empty title field, delete the entire event
+        // (but let the title input's own handler take care of it if it's the title input)
         if (!isInTextField && editedEvent && onDelete) {
           e.preventDefault();
           e.stopPropagation();
@@ -568,6 +575,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
               } else if (e.key === 'Delete' || e.key === 'Backspace') {
                 // Delete the event if it's empty (no title)
                 if (!editedEvent.title.trim()) {
+                  console.log('EventEditor: Delete pressed on empty title, deleting event');
                   e.preventDefault();
                   e.stopPropagation();
                   if (onDelete) {

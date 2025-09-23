@@ -246,17 +246,17 @@ export default function ChronosApp() {
     }
   };
 
-  // Handle event deletion (UI updates only - CalendarModule handles the actual deletion)
+  // Handle event deletion
   const handleDeleteEvent = (eventId: string) => {
     console.log('handleDeleteEvent called with ID:', eventId);
+
+    // Delete the event from calendarEvents
+    setCalendarEvents(prev => prev.filter(e => e.id !== eventId));
 
     // If this was the selected event, close the editor immediately
     if (selectedEvent?.id === eventId) {
       setSelectedEvent(null);
     }
-
-    // Note: The actual deletion is handled by CalendarModule through its history system
-    // This ensures undo/redo works correctly with the event's last position
   };
 
   // Update resize handler for merged separator
