@@ -2791,28 +2791,26 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                       // Find the parent event to get recurrence pattern
                       const parentEvent = event.parentId ? baseEvents.find(e => e.id === event.parentId) : null;
                       const baseRecurringEvent = parentEvent || event;
-                      let untilDateTime = new Date(eventDate);
+                      let untilDateTime: Date;
 
                       if (baseRecurringEvent.recurrence) {
                         if (baseRecurringEvent.recurrence.includes('FREQ=DAILY')) {
-                          // For daily events, go back 1 day and set to end of that day
-                          untilDateTime.setDate(untilDateTime.getDate() - 1);
-                          untilDateTime.setHours(23, 59, 59, 999);
+                          // For daily events, previous occurrence is exactly 24 hours before
+                          untilDateTime = new Date(eventDate.getTime() - 24 * 60 * 60 * 1000);
                         } else if (baseRecurringEvent.recurrence.includes('FREQ=WEEKLY')) {
-                          // For weekly events, go back 7 days and set to end of that day
-                          untilDateTime.setDate(untilDateTime.getDate() - 7);
-                          untilDateTime.setHours(23, 59, 59, 999);
+                          // For weekly events, previous occurrence is exactly 7 days before
+                          untilDateTime = new Date(eventDate.getTime() - 7 * 24 * 60 * 60 * 1000);
                         } else if (baseRecurringEvent.recurrence.includes('FREQ=MONTHLY')) {
-                          // For monthly events, go back 1 month and set to end of that day
+                          // For monthly events, go back one month
+                          untilDateTime = new Date(eventDate);
                           untilDateTime.setMonth(untilDateTime.getMonth() - 1);
-                          untilDateTime.setHours(23, 59, 59, 999);
                         } else {
                           // Default: just before this occurrence
-                          untilDateTime.setMinutes(untilDateTime.getMinutes() - 1);
+                          untilDateTime = new Date(eventDate.getTime() - 1000);
                         }
                       } else {
                         // Default: just before this occurrence
-                        untilDateTime.setMinutes(untilDateTime.getMinutes() - 1);
+                        untilDateTime = new Date(eventDate.getTime() - 1000);
                       }
 
                       const untilDate = untilDateTime.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
@@ -3050,14 +3048,35 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
               for (const series of otherSeriesInGroup) {
                 const seriesStart = new Date(series.start);
                 const newStart = modal.newStart || new Date(modal.event.start);
-                const hoursDiff = Math.abs(seriesStart.getHours() - newStart.getHours());
-                const minutesDiff = Math.abs(seriesStart.getMinutes() - newStart.getMinutes());
+
+                // Extract time components for comparison
+                const seriesTime = seriesStart.getHours() * 60 + seriesStart.getMinutes();
+                const newTime = newStart.getHours() * 60 + newStart.getMinutes();
 
                 // If moving to the same time as another series in the group, we should merge
-                if (hoursDiff === 0 && minutesDiff === 0) {
-                  shouldMergeWithExisting = true;
-                  seriestoMergeWith = series;
-                  break;
+                // Also check that this series could actually generate events at the merge point
+                if (seriesTime === newTime) {
+                  // Verify this series would generate an event on the date we're merging
+                  const mergeDate = new Date(modal.event.start);
+                  const seriesStartDate = new Date(series.start);
+
+                  // Check if the series pattern would include this date
+                  let wouldGenerate = false;
+                  if (series.recurrence?.includes('FREQ=DAILY')) {
+                    wouldGenerate = true; // Daily always generates
+                  } else if (series.recurrence?.includes('FREQ=WEEKLY')) {
+                    // Check if it's the same day of week
+                    wouldGenerate = mergeDate.getDay() === seriesStartDate.getDay();
+                  } else if (series.recurrence?.includes('FREQ=MONTHLY')) {
+                    // Check if it's the same day of month
+                    wouldGenerate = mergeDate.getDate() === seriesStartDate.getDate();
+                  }
+
+                  if (wouldGenerate) {
+                    shouldMergeWithExisting = true;
+                    seriestoMergeWith = series;
+                    break;
+                  }
                 }
               }
 
@@ -3108,72 +3127,32 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                 // Normal split behavior - create a new series
                 const eventDate = new Date(modal.event.start);
 
-                // For daily/weekly recurrence, we need to find the previous occurrence's date
-                // and set UNTIL to include it but exclude the current one
+                // Calculate UNTIL date to properly exclude this and following occurrences
+                // The key is to set UNTIL to the exact start time of the last occurrence we want to keep
+
                 const baseEvent = baseEvents.find(e => e.id === parentId);
-                let untilDateTime = new Date(eventDate);
+                const recurrencePattern = baseEvent?.recurrence || modal.event.recurrence || '';
 
-                // We need to find the actual previous occurrence date
-                // This is critical for proper splitting without gaps
+                let untilDateTime: Date;
 
-                if (modal.event.isVirtual && modal.event.parentId) {
-                  // For virtual events, we can calculate the previous occurrence precisely
-                  const parentEvent = baseEvents.find(e => e.id === modal.event.parentId);
-                  if (parentEvent?.recurrence) {
-                    if (parentEvent.recurrence.includes('FREQ=DAILY')) {
-                      // For daily events, UNTIL should be end of previous day
-                      untilDateTime.setDate(untilDateTime.getDate() - 1);
-                      untilDateTime.setHours(23, 59, 59, 999);
-                    } else if (parentEvent.recurrence.includes('FREQ=WEEKLY')) {
-                      // For weekly events, UNTIL should be end of day 7 days before
-                      untilDateTime.setDate(untilDateTime.getDate() - 7);
-                      untilDateTime.setHours(23, 59, 59, 999);
-                    } else if (parentEvent.recurrence.includes('FREQ=MONTHLY')) {
-                      // For monthly events, UNTIL should be end of previous month's occurrence
-                      untilDateTime.setMonth(untilDateTime.getMonth() - 1);
-                      untilDateTime.setHours(23, 59, 59, 999);
-                    } else {
-                      // Default: just before this occurrence
-                      untilDateTime.setMinutes(untilDateTime.getMinutes() - 1);
-                    }
-                  } else {
-                    // No recurrence info, use precise cutoff
-                    untilDateTime.setMinutes(untilDateTime.getMinutes() - 1);
-                  }
-                } else if (isSplitSeries) {
-                  // For split series being split again, we need to find the actual previous occurrence
-                  // Look at the modal event's recurrence pattern
-                  if (modal.event.recurrence?.includes('FREQ=DAILY')) {
-                    untilDateTime.setDate(untilDateTime.getDate() - 1);
-                    untilDateTime.setHours(23, 59, 59, 999);
-                  } else if (modal.event.recurrence?.includes('FREQ=WEEKLY')) {
-                    untilDateTime.setDate(untilDateTime.getDate() - 7);
-                    untilDateTime.setHours(23, 59, 59, 999);
-                  } else if (modal.event.recurrence?.includes('FREQ=MONTHLY')) {
-                    untilDateTime.setMonth(untilDateTime.getMonth() - 1);
-                    untilDateTime.setHours(23, 59, 59, 999);
-                  } else {
-                    // Use precise cutoff for complex cases
-                    untilDateTime.setMinutes(untilDateTime.getMinutes() - 1);
-                  }
-                } else if (baseEvent?.recurrence) {
-                  // For base events, use the standard calculation
-                  if (baseEvent.recurrence.includes('FREQ=DAILY')) {
-                    untilDateTime.setDate(untilDateTime.getDate() - 1);
-                    untilDateTime.setHours(23, 59, 59, 999);
-                  } else if (baseEvent.recurrence.includes('FREQ=WEEKLY')) {
-                    untilDateTime.setDate(untilDateTime.getDate() - 7);
-                    untilDateTime.setHours(23, 59, 59, 999);
-                  } else if (baseEvent.recurrence.includes('FREQ=MONTHLY')) {
-                    untilDateTime.setMonth(untilDateTime.getMonth() - 1);
-                    untilDateTime.setHours(23, 59, 59, 999);
-                  } else {
-                    untilDateTime.setMinutes(untilDateTime.getMinutes() - 1);
-                  }
+                // Find the previous occurrence's exact time
+                if (recurrencePattern.includes('FREQ=DAILY')) {
+                  // For daily events, previous occurrence is exactly 24 hours before
+                  untilDateTime = new Date(eventDate.getTime() - 24 * 60 * 60 * 1000);
+                } else if (recurrencePattern.includes('FREQ=WEEKLY')) {
+                  // For weekly events, previous occurrence is exactly 7 days before
+                  untilDateTime = new Date(eventDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+                } else if (recurrencePattern.includes('FREQ=MONTHLY')) {
+                  // For monthly events, go back one month
+                  untilDateTime = new Date(eventDate);
+                  untilDateTime.setMonth(untilDateTime.getMonth() - 1);
                 } else {
-                  // Default: just before this occurrence
-                  untilDateTime.setMinutes(untilDateTime.getMinutes() - 1);
+                  // For other patterns, use a precise cutoff just before this event
+                  untilDateTime = new Date(eventDate.getTime() - 1000); // 1 second before
                 }
+
+                // The UNTIL date should be at the exact time of the last included occurrence
+                // This ensures the recurrence generator stops at the right point
 
                 // Get the original recurrence pattern before modifying the base event
                 console.log('Looking for parent in baseEvents:', {
