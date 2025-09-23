@@ -2787,9 +2787,34 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                       // Delete this and following occurrences
                       // This requires updating the recurrence rule to end before this date
                       const eventDate = new Date(event.start);
-                      // Set UNTIL to just before this occurrence to exclude it
-                      const untilDateTime = new Date(eventDate);
-                      untilDateTime.setMinutes(untilDateTime.getMinutes() - 1);
+
+                      // Find the parent event to get recurrence pattern
+                      const parentEvent = event.parentId ? baseEvents.find(e => e.id === event.parentId) : null;
+                      const baseRecurringEvent = parentEvent || event;
+                      let untilDateTime = new Date(eventDate);
+
+                      if (baseRecurringEvent.recurrence) {
+                        if (baseRecurringEvent.recurrence.includes('FREQ=DAILY')) {
+                          // For daily events, go back 1 day and set to end of that day
+                          untilDateTime.setDate(untilDateTime.getDate() - 1);
+                          untilDateTime.setHours(23, 59, 59, 999);
+                        } else if (baseRecurringEvent.recurrence.includes('FREQ=WEEKLY')) {
+                          // For weekly events, go back 7 days and set to end of that day
+                          untilDateTime.setDate(untilDateTime.getDate() - 7);
+                          untilDateTime.setHours(23, 59, 59, 999);
+                        } else if (baseRecurringEvent.recurrence.includes('FREQ=MONTHLY')) {
+                          // For monthly events, go back 1 month and set to end of that day
+                          untilDateTime.setMonth(untilDateTime.getMonth() - 1);
+                          untilDateTime.setHours(23, 59, 59, 999);
+                        } else {
+                          // Default: just before this occurrence
+                          untilDateTime.setMinutes(untilDateTime.getMinutes() - 1);
+                        }
+                      } else {
+                        // Default: just before this occurrence
+                        untilDateTime.setMinutes(untilDateTime.getMinutes() - 1);
+                      }
+
                       const untilDate = untilDateTime.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
 
                       if (event.parentId) {
@@ -3064,10 +3089,32 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                 // Normal split behavior - create a new series
                 const eventDate = new Date(modal.event.start);
 
-                // Set UNTIL to just before this occurrence to exclude it and all following
-                // We need to exclude this specific time, not just the day
-                const untilDateTime = new Date(eventDate);
-                untilDateTime.setMinutes(untilDateTime.getMinutes() - 1);
+                // For daily/weekly recurrence, we need to find the previous occurrence's date
+                // and set UNTIL to include it but exclude the current one
+                const baseEvent = baseEvents.find(e => e.id === parentId);
+                let untilDateTime = new Date(eventDate);
+
+                if (baseEvent?.recurrence) {
+                  if (baseEvent.recurrence.includes('FREQ=DAILY')) {
+                    // For daily events, go back 1 day and set to end of that day
+                    untilDateTime.setDate(untilDateTime.getDate() - 1);
+                    untilDateTime.setHours(23, 59, 59, 999);
+                  } else if (baseEvent.recurrence.includes('FREQ=WEEKLY')) {
+                    // For weekly events, go back 7 days and set to end of that day
+                    untilDateTime.setDate(untilDateTime.getDate() - 7);
+                    untilDateTime.setHours(23, 59, 59, 999);
+                  } else if (baseEvent.recurrence.includes('FREQ=MONTHLY')) {
+                    // For monthly events, go back 1 month and set to end of that day
+                    untilDateTime.setMonth(untilDateTime.getMonth() - 1);
+                    untilDateTime.setHours(23, 59, 59, 999);
+                  } else {
+                    // Default: just before this occurrence
+                    untilDateTime.setMinutes(untilDateTime.getMinutes() - 1);
+                  }
+                } else {
+                  // Default: just before this occurrence
+                  untilDateTime.setMinutes(untilDateTime.getMinutes() - 1);
+                }
 
                 // Get the original recurrence pattern before modifying the base event
                 console.log('Looking for parent in baseEvents:', {
