@@ -3305,33 +3305,50 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
               // Set flag to disable animations for all events
               setIsMovingAllRecurring(true);
 
-              // Check what type of event this is
-              const isBaseEvent = modal.event.recurrence && modal.event.recurrence !== 'none' && !modal.event.isVirtual;
-              const isExceptionEvent = !modal.event.recurrence && modal.event.recurrenceGroupId && !modal.event.isVirtual;
+              // Determine the recurrence group ID for this series
+              const recurrenceGroupId = modal.event.recurrenceGroupId || modal.event.parentId || modal.event.id;
+              console.log('Moving all events in recurrence group:', recurrenceGroupId);
 
-              // For exception events, we need to find the base event through recurrenceGroupId
-              let parentId = isBaseEvent ? modal.event.id : modal.event.parentId;
-              if (isExceptionEvent) {
-                // Find the base event for this exception
-                const baseEvent = baseEvents.find(e =>
-                  e.id === modal.event.recurrenceGroupId ||
-                  (e.recurrenceGroupId === modal.event.recurrenceGroupId && e.recurrence)
-                );
-                parentId = baseEvent?.id || modal.event.recurrenceGroupId;
-              }
-
-              // Move/resize all occurrences by updating the base event
+              // Calculate the time difference for the move
               const timeDiff = modal.newStart ? modal.newStart.getTime() - new Date(modal.event.start).getTime() : 0;
+              const sizeDiff = modal.newEnd && modal.newStart ?
+                (modal.newEnd.getTime() - modal.newStart.getTime()) -
+                (new Date(modal.event.end).getTime() - new Date(modal.event.start).getTime()) : 0;
 
+              // Update ALL events in the recurrence group, including split series
               const updatedEvents = baseEvents.map(e => {
-                if (e.id === parentId) {
+                // Check if this event belongs to the same recurrence group
+                const belongsToGroup =
+                  e.id === recurrenceGroupId ||
+                  e.recurrenceGroupId === recurrenceGroupId ||
+                  e.parentId === recurrenceGroupId ||
+                  (e.id && e.id.startsWith(`${recurrenceGroupId}-split-`));
+
+                if (belongsToGroup && e.recurrence) {
+                  // This is a base event or split series in the group
                   const baseStart = new Date(e.start);
                   const baseEnd = new Date(e.end);
+
+                  console.log('Updating series in group:', {
+                    eventId: e.id,
+                    oldStart: e.start,
+                    newStart: new Date(baseStart.getTime() + timeDiff).toISOString()
+                  });
 
                   return {
                     ...e,
                     start: new Date(baseStart.getTime() + timeDiff).toISOString(),
-                    end: modal.newEnd ? modal.newEnd.toISOString() : new Date(baseEnd.getTime() + timeDiff).toISOString()
+                    end: new Date(baseEnd.getTime() + timeDiff + sizeDiff).toISOString()
+                  };
+                } else if (belongsToGroup && !e.recurrence && !e.isVirtual) {
+                  // This is an exception event in the group
+                  const eventStart = new Date(e.start);
+                  const eventEnd = new Date(e.end);
+
+                  return {
+                    ...e,
+                    start: new Date(eventStart.getTime() + timeDiff).toISOString(),
+                    end: new Date(eventEnd.getTime() + timeDiff + sizeDiff).toISOString()
                   };
                 }
                 return e;
