@@ -2787,6 +2787,11 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                       // Delete this and following occurrences
                       // This requires updating the recurrence rule to end before this date
                       const eventDate = new Date(event.start);
+                      // Set UNTIL to just before this occurrence to exclude it
+                      const untilDateTime = new Date(eventDate);
+                      untilDateTime.setMinutes(untilDateTime.getMinutes() - 1);
+                      const untilDate = untilDateTime.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+
                       if (event.parentId) {
                         const parentEvent = baseEvents.find(e => e.id === event.parentId);
                         if (parentEvent && parentEvent.recurrence) {
@@ -2794,8 +2799,8 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                           const updatedParent = {
                             ...parentEvent,
                             recurrence: parentEvent.recurrence.includes('UNTIL=')
-                              ? parentEvent.recurrence.replace(/UNTIL=[^;]+/, `UNTIL=${eventDate.toISOString().replace(/[-:]/g, '').split('.')[0]}Z`)
-                              : `${parentEvent.recurrence};UNTIL=${eventDate.toISOString().replace(/[-:]/g, '').split('.')[0]}Z`
+                              ? parentEvent.recurrence.replace(/UNTIL=[^;]+/, `UNTIL=${untilDate}`)
+                              : `${parentEvent.recurrence};UNTIL=${untilDate}`
                           };
                           const updatedEvents = baseEvents.map(e =>
                             e.id === parentEvent.id ? updatedParent : e
@@ -3058,8 +3063,11 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
               } else {
                 // Normal split behavior - create a new series
                 const eventDate = new Date(modal.event.start);
-                const prevDay = new Date(eventDate);
-                prevDay.setDate(prevDay.getDate() - 1);
+
+                // Set UNTIL to just before this occurrence to exclude it and all following
+                // We need to exclude this specific time, not just the day
+                const untilDateTime = new Date(eventDate);
+                untilDateTime.setMinutes(untilDateTime.getMinutes() - 1);
 
                 // Get the original recurrence pattern before modifying the base event
                 console.log('Looking for parent in baseEvents:', {
@@ -3106,9 +3114,10 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
 
                 const updatedEvents = baseEvents.map(e => {
                   if (e.id === parentId) {
-                    // Update the original series to end before this date
+                    // Update the original series to end before this occurrence
                     let updatedRecurrence = e.recurrence || '';
-                    const untilDate = prevDay.toISOString().split('T')[0].replace(/-/g, '') + 'T235959Z';
+                    // Format the UNTIL date in RRULE format (YYYYMMDDTHHmmssZ)
+                    const untilDate = untilDateTime.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
 
                     if (updatedRecurrence) {
                       updatedRecurrence = updatedRecurrence.replace(/;?UNTIL=[^;]*/g, '');
