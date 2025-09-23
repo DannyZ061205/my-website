@@ -3344,17 +3344,21 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
               if (shouldConsolidate && originalBaseEvent) {
                 console.log('Consolidating split series back into single series');
 
-                // Consolidate all recurrence patterns and exclusions
-                let consolidatedRecurrence = [...(originalBaseEvent.recurrence || [])];
-                let consolidatedExclusions = [...(originalBaseEvent.exclusions || [])];
+                // When consolidating, we just need the original recurrence pattern
+                // Split series have already been handling their own portions with UNTIL dates
+                // We restore the original recurrence without UNTIL constraints
+                let consolidatedRecurrence = originalBaseEvent.recurrence || '';
 
-                // Add recurrence patterns from all split series
+                // Remove any UNTIL constraint from the recurrence pattern
+                consolidatedRecurrence = consolidatedRecurrence.replace(/;?UNTIL=[^;]*/g, '');
+
+                // Collect all excluded dates from original and split series
+                let consolidatedExclusions = [...(originalBaseEvent.excludedDates || [])];
+
+                // Add excluded dates from split series if any
                 splitSeries.forEach(splitEvent => {
-                  if (splitEvent.recurrence) {
-                    consolidatedRecurrence = [...consolidatedRecurrence, ...splitEvent.recurrence];
-                  }
-                  if (splitEvent.exclusions) {
-                    consolidatedExclusions = [...consolidatedExclusions, ...splitEvent.exclusions];
+                  if (splitEvent.excludedDates) {
+                    consolidatedExclusions = [...consolidatedExclusions, ...splitEvent.excludedDates];
                   }
                 });
 
@@ -3367,12 +3371,12 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                   start: modal.newStart?.toISOString() || new Date(new Date(originalBaseEvent.start).getTime() + timeDiff).toISOString(),
                   end: modal.newEnd?.toISOString() || new Date(new Date(originalBaseEvent.end).getTime() + timeDiff + sizeDiff).toISOString(),
                   recurrence: consolidatedRecurrence,
-                  exclusions: consolidatedExclusions
+                  excludedDates: consolidatedExclusions
                 };
 
                 console.log('Consolidated event:', {
                   id: consolidatedBaseEvent.id,
-                  recurrenceCount: consolidatedRecurrence.length,
+                  recurrence: consolidatedRecurrence,
                   exclusionsCount: consolidatedExclusions.length
                 });
 
