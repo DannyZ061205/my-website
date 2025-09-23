@@ -2310,8 +2310,16 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                   });
 
                 // Check if event continues from previous day or to next day
+                // Events ending at exactly midnight (00:00:00) should NOT be considered as continuing
                 const continuesFromPreviousDay = eventStart < dayStart;
-                const continuesToNextDay = eventEnd > dayEnd;
+
+                // Check if event ends after midnight (not AT midnight)
+                const nextDayStart = new Date(dayStart);
+                nextDayStart.setDate(nextDayStart.getDate() + 1);
+                nextDayStart.setHours(0, 0, 0, 0);
+
+                // Only consider it continuing if it goes past midnight (not just to midnight)
+                const continuesToNextDay = eventEnd > nextDayStart;
 
                 const position = getEventPosition(event, dayIndex, dayEvents);
                 if (!position) return null;
