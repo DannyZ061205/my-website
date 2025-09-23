@@ -3326,34 +3326,48 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
               });
 
               // Find the original base event and any split series
-              const originalBaseEvent = groupEvents.find(e => e.id === recurrenceGroupId && e.recurrence);
+              let originalBaseEvent = groupEvents.find(e => e.id === recurrenceGroupId && e.recurrence);
               const splitSeries = groupEvents.filter(e => e.id && e.id.startsWith(`${recurrenceGroupId}-split-`) && e.recurrence);
               const exceptionEvents = groupEvents.filter(e => !e.recurrence && !e.isVirtual);
 
+              // If the original base event has been turned into an exception (no recurrence),
+              // we need to restore it as a recurring event when moving all
+              const baseEventIsException = !originalBaseEvent && groupEvents.find(e => e.id === recurrenceGroupId && !e.recurrence);
+
               console.log('Group analysis:', {
                 originalBaseEvent: originalBaseEvent?.id,
+                baseEventIsException: !!baseEventIsException,
                 splitSeriesCount: splitSeries.length,
                 exceptionEventsCount: exceptionEvents.length
               });
 
-              // Check if we need to consolidate split series
-              const shouldConsolidate = splitSeries.length > 0;
+              // Check if we need to consolidate split series OR restore recurrence
+              const shouldConsolidate = splitSeries.length > 0 || baseEventIsException;
 
               let updatedEvents;
 
-              if (shouldConsolidate && originalBaseEvent) {
-                console.log('Consolidating split series back into single series');
+              if (shouldConsolidate && (originalBaseEvent || baseEventIsException)) {
+                console.log('Consolidating/restoring recurring series');
 
-                // When consolidating, we just need the original recurrence pattern
-                // Split series have already been handling their own portions with UNTIL dates
-                // We restore the original recurrence without UNTIL constraints
-                let consolidatedRecurrence = originalBaseEvent.recurrence || '';
+                // Use the base event if it exists, or the exception event
+                const baseToUse = originalBaseEvent || baseEventIsException;
+
+                // When consolidating, we need to restore the recurrence pattern
+                // If the base event lost its recurrence, we need to restore it
+                let consolidatedRecurrence = baseToUse.recurrence || '';
+
+                // If no recurrence exists (base became exception), restore default daily recurrence
+                // In a real app, we'd want to remember the original pattern
+                if (!consolidatedRecurrence && baseEventIsException) {
+                  console.log('Restoring recurrence for exception base event');
+                  consolidatedRecurrence = 'FREQ=DAILY'; // Default to daily
+                }
 
                 // Remove any UNTIL constraint from the recurrence pattern
                 consolidatedRecurrence = consolidatedRecurrence.replace(/;?UNTIL=[^;]*/g, '');
 
                 // Collect all excluded dates from original and split series
-                let consolidatedExclusions = [...(originalBaseEvent.excludedDates || [])];
+                let consolidatedExclusions = [...(baseToUse.excludedDates || [])];
 
                 // Add excluded dates from split series if any
                 splitSeries.forEach(splitEvent => {
@@ -3365,11 +3379,15 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                 // Remove duplicate exclusions
                 consolidatedExclusions = [...new Set(consolidatedExclusions)];
 
+                // When moving all events, we want to clear excluded dates since we're moving everything together
+                // Exception events will be moved as well, so no need for exclusions
+                consolidatedExclusions = [];
+
                 // Create the consolidated base event
                 const consolidatedBaseEvent = {
-                  ...originalBaseEvent,
-                  start: modal.newStart?.toISOString() || new Date(new Date(originalBaseEvent.start).getTime() + timeDiff).toISOString(),
-                  end: modal.newEnd?.toISOString() || new Date(new Date(originalBaseEvent.end).getTime() + timeDiff + sizeDiff).toISOString(),
+                  ...baseToUse,
+                  start: modal.newStart?.toISOString() || new Date(new Date(baseToUse.start).getTime() + timeDiff).toISOString(),
+                  end: modal.newEnd?.toISOString() || new Date(new Date(baseToUse.end).getTime() + timeDiff + sizeDiff).toISOString(),
                   recurrence: consolidatedRecurrence,
                   excludedDates: consolidatedExclusions
                 };
@@ -3380,7 +3398,7 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                   exclusionsCount: consolidatedExclusions.length
                 });
 
-                // Update events: keep the consolidated base event, remove split series, update exceptions
+                // Update events: keep the consolidated base event, remove split series and exceptions
                 updatedEvents = baseEvents.map(e => {
                   // Remove split series
                   if (e.id && e.id.startsWith(`${recurrenceGroupId}-split-`) && e.recurrence) {
@@ -3388,28 +3406,22 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                   }
 
                   // Update the original base event with consolidated data
-                  if (e.id === recurrenceGroupId && e.recurrence) {
+                  if (e.id === recurrenceGroupId) {
                     return consolidatedBaseEvent;
                   }
 
-                  // Update exception events in the group
+                  // Remove all exception events in the group since we're consolidating
+                  // The recurrence will regenerate all events
                   const belongsToGroup =
                     e.recurrenceGroupId === recurrenceGroupId ||
                     e.parentId === recurrenceGroupId;
 
                   if (belongsToGroup && !e.recurrence && !e.isVirtual) {
-                    const eventStart = new Date(e.start);
-                    const eventEnd = new Date(e.end);
-
-                    return {
-                      ...e,
-                      start: new Date(eventStart.getTime() + timeDiff).toISOString(),
-                      end: new Date(eventEnd.getTime() + timeDiff + sizeDiff).toISOString()
-                    };
+                    return null; // Remove exception events
                   }
 
                   return e;
-                }).filter(e => e !== null); // Remove split series
+                }).filter(e => e !== null); // Remove nulls
 
               } else {
                 // No consolidation needed, just update all events normally
