@@ -3315,44 +3315,138 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                 (modal.newEnd.getTime() - modal.newStart.getTime()) -
                 (new Date(modal.event.end).getTime() - new Date(modal.event.start).getTime()) : 0;
 
-              // Update ALL events in the recurrence group, including split series
-              const updatedEvents = baseEvents.map(e => {
-                // Check if this event belongs to the same recurrence group
+              // Find all events in the recurrence group
+              const groupEvents = baseEvents.filter(e => {
                 const belongsToGroup =
                   e.id === recurrenceGroupId ||
                   e.recurrenceGroupId === recurrenceGroupId ||
                   e.parentId === recurrenceGroupId ||
                   (e.id && e.id.startsWith(`${recurrenceGroupId}-split-`));
-
-                if (belongsToGroup && e.recurrence) {
-                  // This is a base event or split series in the group
-                  const baseStart = new Date(e.start);
-                  const baseEnd = new Date(e.end);
-
-                  console.log('Updating series in group:', {
-                    eventId: e.id,
-                    oldStart: e.start,
-                    newStart: new Date(baseStart.getTime() + timeDiff).toISOString()
-                  });
-
-                  return {
-                    ...e,
-                    start: new Date(baseStart.getTime() + timeDiff).toISOString(),
-                    end: new Date(baseEnd.getTime() + timeDiff + sizeDiff).toISOString()
-                  };
-                } else if (belongsToGroup && !e.recurrence && !e.isVirtual) {
-                  // This is an exception event in the group
-                  const eventStart = new Date(e.start);
-                  const eventEnd = new Date(e.end);
-
-                  return {
-                    ...e,
-                    start: new Date(eventStart.getTime() + timeDiff).toISOString(),
-                    end: new Date(eventEnd.getTime() + timeDiff + sizeDiff).toISOString()
-                  };
-                }
-                return e;
+                return belongsToGroup;
               });
+
+              // Find the original base event and any split series
+              const originalBaseEvent = groupEvents.find(e => e.id === recurrenceGroupId && e.recurrence);
+              const splitSeries = groupEvents.filter(e => e.id && e.id.startsWith(`${recurrenceGroupId}-split-`) && e.recurrence);
+              const exceptionEvents = groupEvents.filter(e => !e.recurrence && !e.isVirtual);
+
+              console.log('Group analysis:', {
+                originalBaseEvent: originalBaseEvent?.id,
+                splitSeriesCount: splitSeries.length,
+                exceptionEventsCount: exceptionEvents.length
+              });
+
+              // Check if we need to consolidate split series
+              const shouldConsolidate = splitSeries.length > 0;
+
+              let updatedEvents;
+
+              if (shouldConsolidate && originalBaseEvent) {
+                console.log('Consolidating split series back into single series');
+
+                // Consolidate all recurrence patterns and exclusions
+                let consolidatedRecurrence = [...(originalBaseEvent.recurrence || [])];
+                let consolidatedExclusions = [...(originalBaseEvent.exclusions || [])];
+
+                // Add recurrence patterns from all split series
+                splitSeries.forEach(splitEvent => {
+                  if (splitEvent.recurrence) {
+                    consolidatedRecurrence = [...consolidatedRecurrence, ...splitEvent.recurrence];
+                  }
+                  if (splitEvent.exclusions) {
+                    consolidatedExclusions = [...consolidatedExclusions, ...splitEvent.exclusions];
+                  }
+                });
+
+                // Remove duplicate exclusions
+                consolidatedExclusions = [...new Set(consolidatedExclusions)];
+
+                // Create the consolidated base event
+                const consolidatedBaseEvent = {
+                  ...originalBaseEvent,
+                  start: modal.newStart?.toISOString() || new Date(new Date(originalBaseEvent.start).getTime() + timeDiff).toISOString(),
+                  end: modal.newEnd?.toISOString() || new Date(new Date(originalBaseEvent.end).getTime() + timeDiff + sizeDiff).toISOString(),
+                  recurrence: consolidatedRecurrence,
+                  exclusions: consolidatedExclusions
+                };
+
+                console.log('Consolidated event:', {
+                  id: consolidatedBaseEvent.id,
+                  recurrenceCount: consolidatedRecurrence.length,
+                  exclusionsCount: consolidatedExclusions.length
+                });
+
+                // Update events: keep the consolidated base event, remove split series, update exceptions
+                updatedEvents = baseEvents.map(e => {
+                  // Remove split series
+                  if (e.id && e.id.startsWith(`${recurrenceGroupId}-split-`) && e.recurrence) {
+                    return null; // Mark for removal
+                  }
+
+                  // Update the original base event with consolidated data
+                  if (e.id === recurrenceGroupId && e.recurrence) {
+                    return consolidatedBaseEvent;
+                  }
+
+                  // Update exception events in the group
+                  const belongsToGroup =
+                    e.recurrenceGroupId === recurrenceGroupId ||
+                    e.parentId === recurrenceGroupId;
+
+                  if (belongsToGroup && !e.recurrence && !e.isVirtual) {
+                    const eventStart = new Date(e.start);
+                    const eventEnd = new Date(e.end);
+
+                    return {
+                      ...e,
+                      start: new Date(eventStart.getTime() + timeDiff).toISOString(),
+                      end: new Date(eventEnd.getTime() + timeDiff + sizeDiff).toISOString()
+                    };
+                  }
+
+                  return e;
+                }).filter(e => e !== null); // Remove split series
+
+              } else {
+                // No consolidation needed, just update all events normally
+                updatedEvents = baseEvents.map(e => {
+                  // Check if this event belongs to the same recurrence group
+                  const belongsToGroup =
+                    e.id === recurrenceGroupId ||
+                    e.recurrenceGroupId === recurrenceGroupId ||
+                    e.parentId === recurrenceGroupId ||
+                    (e.id && e.id.startsWith(`${recurrenceGroupId}-split-`));
+
+                  if (belongsToGroup && e.recurrence) {
+                    // This is a base event or split series in the group
+                    const baseStart = new Date(e.start);
+                    const baseEnd = new Date(e.end);
+
+                    console.log('Updating series in group:', {
+                      eventId: e.id,
+                      oldStart: e.start,
+                      newStart: new Date(baseStart.getTime() + timeDiff).toISOString()
+                    });
+
+                    return {
+                      ...e,
+                      start: new Date(baseStart.getTime() + timeDiff).toISOString(),
+                      end: new Date(baseEnd.getTime() + timeDiff + sizeDiff).toISOString()
+                    };
+                  } else if (belongsToGroup && !e.recurrence && !e.isVirtual) {
+                    // This is an exception event in the group
+                    const eventStart = new Date(e.start);
+                    const eventEnd = new Date(e.end);
+
+                    return {
+                      ...e,
+                      start: new Date(eventStart.getTime() + timeDiff).toISOString(),
+                      end: new Date(eventEnd.getTime() + timeDiff + sizeDiff).toISOString()
+                    };
+                  }
+                  return e;
+                });
+              }
 
               // Use baseEvents as currentEvents to avoid including virtual events in history
               addToHistory(updatedEvents, baseEvents);
