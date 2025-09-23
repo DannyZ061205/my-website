@@ -509,6 +509,10 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
 
   // Track appearing events for animation
   const [appearingEventIds, setAppearingEventIds] = useState<Set<string>>(new Set());
+  // Track daily recurring events for wave animation
+  const [dailyRecurringAnimIds, setDailyRecurringAnimIds] = useState<Set<string>>(new Set());
+  // Track daily recurring events that have completed animation
+  const [dailyRecurringCompletedIds, setDailyRecurringCompletedIds] = useState<Set<string>>(new Set());
 
 
   // Use external events if provided, otherwise use internal
@@ -539,6 +543,7 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
   const [dragStart, setDragStart] = useState<{ x: number; y: number; time: Date } | null>(null);
   const [dragEnd, setDragEnd] = useState<{ x: number; y: number; time: Date } | null>(null);
   const [draggedEvent, setDraggedEvent] = useState<CalendarEvent | null>(null);
+  const [justFinishedDragging, setJustFinishedDragging] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState<{ minutes: number } | null>(null);
   const [isResizing, setIsResizing] = useState(false);
   const [resizeEdge, setResizeEdge] = useState<'top' | 'bottom' | null>(null);
@@ -649,12 +654,53 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
     const viewEnd = new Date(weekDates[weekDates.length - 1]);
     viewEnd.setDate(viewEnd.getDate() + 7); // 1 week after
 
+    const startTime = performance.now();
     const generatedEvents = getEventsWithVirtual(baseEvents, viewStart, viewEnd);
+    const endTime = performance.now();
 
-    console.log('CalendarModule: Generated events count:', generatedEvents.length);
+    if (endTime - startTime > 50) {
+      console.warn(`getEventsWithVirtual took ${(endTime - startTime).toFixed(2)}ms for ${baseEvents.length} base events, generated ${generatedEvents.length} events`);
+    }
 
     return generatedEvents;
   }, [baseEvents, weekDates]);
+
+  // Track when events become daily recurring and trigger wave animation
+  const previousEventIdsRef = useRef<Set<string>>(new Set());
+  const hasAnimatedRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const currentEventIds = new Set(events.map(e => e.id));
+    const newDailyRecurringIds = new Set<string>();
+
+    // Check all events to find newly daily recurring ones
+    events.forEach(event => {
+      const isDailyRecurring = event.recurrence?.includes('FREQ=DAILY') ||
+        (event.isVirtual && event.parentId && baseEvents.find(e => e.id === event.parentId)?.recurrence?.includes('FREQ=DAILY'));
+
+      // Only animate if this is a new event and is daily recurring and hasn't been animated yet
+      if (isDailyRecurring && !previousEventIdsRef.current.has(event.id) && !hasAnimatedRef.current.has(event.id)) {
+        newDailyRecurringIds.add(event.id);
+        hasAnimatedRef.current.add(event.id); // Mark as animated to prevent re-animation
+      }
+    });
+
+    previousEventIdsRef.current = currentEventIds;
+
+    if (newDailyRecurringIds.size > 0) {
+      setDailyRecurringAnimIds(prev => new Set([...prev, ...newDailyRecurringIds]));
+
+      // Mark as completed and remove from animating after animation finishes
+      setTimeout(() => {
+        setDailyRecurringAnimIds(prev => {
+          const next = new Set(prev);
+          newDailyRecurringIds.forEach(id => next.delete(id));
+          return next;
+        });
+        setDailyRecurringCompletedIds(prev => new Set([...prev, ...newDailyRecurringIds]));
+      }, 900); // Total animation time
+    }
+  }, [events, baseEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const goToToday = () => {
     setCurrentDate(new Date());
@@ -948,6 +994,12 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
               : e
           );
           addToHistory(updatedEvents, baseEvents);
+
+          // Mark this event as just finished dragging
+          setJustFinishedDragging(draggedEvent.id);
+          setTimeout(() => {
+            setJustFinishedDragging(null);
+          }, 100); // Clear after a short delay
         }
       } else if (dragStart && dragEnd) {
         // Calculate drag distance to determine if this was a drag or just a click
@@ -1901,8 +1953,23 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
 
   return (
     <div className={`h-full bg-white flex flex-col overflow-hidden ${className} ${isDragging || isResizing ? 'select-none' : ''}`}>
+      <style jsx>{`
+        .search-input {
+          transition: all 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .search-input::placeholder {
+          color: rgb(107 114 128);
+          transition: opacity 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .search-collapsed::placeholder {
+          opacity: 0;
+        }
+        .search-expanded::placeholder {
+          opacity: 1;
+        }
+      `}</style>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-blue-200 relative z-0">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-blue-200 relative z-10">
         <div className="flex items-center gap-3" style={{ flex: isSearchBarVisible ? '1' : '0 0 auto' }}>
           <button
             ref={monthButtonRef}
@@ -1980,7 +2047,6 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                 : 'scale(0.9) translateX(10px)',
               flex: isSearchBarVisible ? '1' : '0',
               maxWidth: isSearchBarVisible ? '100%' : '0px',
-              overflow: 'hidden',
               transformOrigin: 'center',
               transition: 'opacity 400ms ease-out, transform 400ms ease-out, flex 400ms ease-out, max-width 400ms ease-out',
               pointerEvents: isSearchBarVisible ? 'auto' : 'none',
@@ -1988,7 +2054,7 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
             }}
           >
             <div
-              className="relative w-64 transition-transform duration-700 ease-in-out"
+              className="relative w-64 transition-transform duration-300 ease-in-out z-50"
               onMouseEnter={() => setIsSearchHovered(true)}
               onMouseLeave={() => {
                 if (!isSearchFocused && !searchQuery) {
@@ -2000,12 +2066,10 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                 type="text"
                 placeholder={isSearchHovered || isSearchFocused ? "Search events..." : ""}
                 value={searchQuery}
-                disabled={!isSearchHovered && !isSearchFocused && !searchQuery}
+                readOnly={!isSearchHovered && !isSearchFocused && !searchQuery}
                 onFocus={() => {
-                  if (isSearchHovered) {
-                    setIsSearchFocused(true);
-                    setIsSearchHovered(true);
-                  }
+                  setIsSearchFocused(true);
+                  setIsSearchHovered(true);
                 }}
                 onBlur={() => {
                   setIsSearchFocused(false);
@@ -2017,6 +2081,10 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                   if (!isSearchHovered && !isSearchFocused && !searchQuery) {
                     e.preventDefault();
                     setIsSearchHovered(true);
+                    // Focus the input after enabling hover
+                    setTimeout(() => {
+                      (e.target as HTMLInputElement).focus();
+                    }, 100);
                   }
                 }}
                 onChange={(e) => {
@@ -2024,23 +2092,73 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                   setSearchQuery(query);
 
                   if (query.trim()) {
-                    // Search through events - match whole words or from word beginning
+                    // Helper function to strip markdown formatting
+                    const stripMarkdown = (text: string): string => {
+                      if (!text) return '';
+
+                      // Remove headers (# ## ### etc.)
+                      let cleaned = text.replace(/^#{1,6}\s+/gm, '');
+
+                      // Remove bold first (***text*** or ___text___)
+                      cleaned = cleaned.replace(/\*\*\*([^*]+)\*\*\*/g, '$1');
+                      cleaned = cleaned.replace(/___([^_]+)___/g, '$1');
+
+                      // Remove bold (**text** or __text__)
+                      cleaned = cleaned.replace(/\*\*([^*]+)\*\*/g, '$1');
+                      cleaned = cleaned.replace(/__([^_]+)__/g, '$1');
+
+                      // Remove italic (*text* or _text_)
+                      cleaned = cleaned.replace(/\*([^*\n]+)\*/g, '$1');
+                      cleaned = cleaned.replace(/\b_([^_\n]+)_\b/g, '$1');
+
+                      // Remove strikethrough (~~text~~)
+                      cleaned = cleaned.replace(/~~([^~]+)~~/g, '$1');
+
+                      // Remove inline code (`text`)
+                      cleaned = cleaned.replace(/`([^`]+)`/g, '$1');
+
+                      // Remove code blocks (```text```)
+                      cleaned = cleaned.replace(/```[^`]*```/g, '');
+
+                      // Remove links [text](url) or [text][ref]
+                      cleaned = cleaned.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+                      cleaned = cleaned.replace(/\[([^\]]+)\]\[[^\]]+\]/g, '$1');
+
+                      // Remove images ![alt](url)
+                      cleaned = cleaned.replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1');
+
+                      // Remove blockquotes (> text)
+                      cleaned = cleaned.replace(/^>\s+/gm, '');
+
+                      // Remove list markers (-, *, +, 1.)
+                      cleaned = cleaned.replace(/^[\s]*[-*+]\s+/gm, '');
+                      cleaned = cleaned.replace(/^[\s]*\d+\.\s+/gm, '');
+
+                      // Remove horizontal rules (---, ***, ___)
+                      cleaned = cleaned.replace(/^[-*_]{3,}$/gm, '');
+
+                      // Remove HTML tags if any
+                      cleaned = cleaned.replace(/<[^>]+>/g, '');
+
+                      // Remove extra whitespace
+                      cleaned = cleaned.replace(/\s+/g, ' ').trim();
+
+                      return cleaned;
+                    };
+
                     const searchLower = query.toLowerCase().trim();
                     const matches = events.filter(event => {
+                      // Get clean text without markdown
                       const title = event.title.toLowerCase();
-                      const description = event.description?.toLowerCase() || '';
+                      const rawDescription = event.description || '';
+                      const cleanDescription = stripMarkdown(rawDescription).toLowerCase();
 
-                      // Check for exact match
-                      if (title === searchLower || description === searchLower) {
-                        return true;
-                      }
+                      // Combine title and clean description for searching
+                      const searchableText = `${title} ${cleanDescription}`;
 
-                      // Check if search term matches beginning of any word
-                      const titleWords = title.split(/\s+/);
-                      const descWords = description.split(/\s+/);
-                      const allWords = [...titleWords, ...descWords];
-
-                      return allWords.some(word => word.startsWith(searchLower));
+                      // Check if the search query appears anywhere in the text (substring match)
+                      // This handles sentences and phrases, not just single words
+                      return searchableText.includes(searchLower);
                     }).map(e => e.id);
 
                     setSearchResults(matches);
@@ -2092,11 +2210,21 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                     setFocusedEventId(null);
                   }
                 }}
-                className={`w-full text-sm text-gray-800 transition-all duration-700 ease-in-out placeholder:text-gray-500 placeholder:transition-opacity placeholder:duration-700 transform ${
-                  isSearchHovered || isSearchFocused || searchQuery
-                    ? 'h-9 px-3 py-1.5 pl-8 pr-8 border border-blue-300 bg-white rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-md scale-105 placeholder:opacity-100 cursor-text'
-                    : 'h-7 px-3 py-1 pl-8 pr-8 bg-gradient-to-r from-blue-50 to-blue-100 hover:from-blue-100 hover:to-blue-150 rounded-full cursor-pointer border border-blue-200 scale-100 placeholder:opacity-0 caret-transparent'
+                className={`w-full text-sm text-gray-800 bg-white border focus:outline-none search-input ${
+                  isSearchHovered || isSearchFocused || searchQuery ? 'search-expanded' : 'search-collapsed'
                 }`}
+                style={{
+                  height: isSearchHovered || isSearchFocused || searchQuery ? '36px' : '28px',
+                  padding: isSearchHovered || isSearchFocused || searchQuery ? '6px 32px' : '4px 32px',
+                  borderRadius: isSearchHovered || isSearchFocused || searchQuery ? '12px' : '24px',
+                  borderColor: isSearchHovered || isSearchFocused || searchQuery ? 'rgb(147, 197, 253)' : 'rgb(191, 219, 254)',
+                  boxShadow: isSearchHovered || isSearchFocused || searchQuery ? '0 4px 6px -1px rgba(0, 0, 0, 0.1)' : '0 0 0 0 rgba(0, 0, 0, 0)',
+                  transform: isSearchHovered || isSearchFocused || searchQuery ? 'scale(1.05)' : 'scale(1)',
+                  caretColor: isSearchHovered || isSearchFocused || searchQuery ? 'auto' : 'transparent',
+                  cursor: isSearchHovered || isSearchFocused || searchQuery ? 'text' : 'pointer',
+                  opacity: 1,
+                  transition: 'all 300ms cubic-bezier(0.4, 0, 0.2, 1)'
+                }}
               />
               {/* Search Icon */}
               <button
@@ -2111,11 +2239,17 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                     }, 100);
                   }
                 }}
-                className={`absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 transition-all duration-700 ease-in-out transform ${
+                className={`absolute w-4 h-4 z-20 ${
                   isSearchHovered || isSearchFocused || searchQuery
-                    ? 'text-blue-400 opacity-100 scale-110 pointer-events-none'
-                    : 'text-blue-500 opacity-70 scale-100 cursor-pointer hover:text-blue-600'
+                    ? 'text-blue-400 opacity-100 pointer-events-none'
+                    : 'text-blue-500 opacity-70 cursor-pointer hover:text-blue-600'
                 }`}
+                style={{
+                  left: isSearchHovered || isSearchFocused || searchQuery ? '8px' : '10px',
+                  top: '52%',
+                  transform: `translateY(-50%) scale(${isSearchHovered || isSearchFocused || searchQuery ? '1.1' : '1'})`,
+                  transition: 'all 300ms cubic-bezier(0.4, 0, 0.2, 1)'
+                }}
               >
                 <svg
                   fill="none"
@@ -2136,7 +2270,7 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                     setIsSearchFocused(false);
                     setIsSearchHovered(false);
                   }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-blue-400 hover:text-blue-600 transition-all duration-700 ease-in-out transform hover:scale-110"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-blue-400 hover:text-blue-600 transition-all duration-300 ease-in-out transform hover:scale-110"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -2350,6 +2484,7 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
 
                 const isBeingDragged = draggedEvent?.id === event.id && isDragging;
                 const isBeingResized = resizedEvent?.id === event.id && isResizing;
+                const hasJustFinishedDragging = justFinishedDragging === event.id;
                 const isCut = cutEventId === event.id;
                 const isSearchHighlight = focusedEventId === event.id && searchResults.length > 0;
                 const isDeleting = deletingEventIds.has(event.id);
@@ -2357,19 +2492,54 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
 
                 const isEventSelected = selectedEventId === event.id || focusedEventId === event.id;
 
+                // Check if this is a daily recurring event
+                const isDailyRecurring = (() => {
+                  // Check if it's a virtual event from a daily recurring parent
+                  if (event.isVirtual && event.parentId) {
+                    const parentEvent = baseEvents.find(e => e.id === event.parentId);
+                    return parentEvent?.recurrence?.includes('FREQ=DAILY');
+                  }
+                  // Check if it's a base daily recurring event
+                  return event.recurrence?.includes('FREQ=DAILY');
+                })();
+
+                // Check if this is the base event (first occurrence)
+                const isBaseEvent = !event.isVirtual && event.recurrence?.includes('FREQ=DAILY');
+
+                // Check if this is a newly created daily recurring event (not yet tracked)
+                const isNewDailyEvent = isDailyRecurring && !isBaseEvent &&
+                  !previousEventIdsRef.current.has(event.id) &&
+                  !hasAnimatedRef.current.has(event.id);
+
+                // Check if this event was just set to daily recurring (skip base event)
+                const isNewlyDailyRecurring = (isDailyRecurring && dailyRecurringAnimIds.has(event.id) && !isBaseEvent) || isNewDailyEvent;
+                const isDailyRecurringCompleted = isDailyRecurring && dailyRecurringCompletedIds.has(event.id) && !isBaseEvent;
+
+                // Calculate the opacity for daily recurring events
+                const getDailyOpacity = () => {
+                  if (!isDailyRecurring) return undefined;
+                  if (isBaseEvent) return 1; // Base event always full opacity
+                  if (isNewlyDailyRecurring) return 0; // Start at 0 for animation
+                  if (isDailyRecurringCompleted) {
+                    return 1; // All events at 100% after animation
+                  }
+                  return 1; // Default to full opacity for existing daily events
+                };
+
                 return (
                   <div
                     key={`${event.id}-day-${dayIndex}`}
                     data-event-id={event.id}
-                    className={`absolute pointer-events-auto ${isEventSelected ? 'z-30' : 'z-10'} ${isSearchHighlight ? 'rounded-lg' : ''} ${isDeleting ? 'event-dissolving' : ''} ${isAppearing ? 'event-appearing' : ''}`}
+                    className={`absolute pointer-events-auto ${isEventSelected ? 'z-30' : 'z-10'} ${isSearchHighlight ? 'rounded-lg' : ''} ${isDeleting ? 'event-dissolving' : ''} ${isAppearing && !isDailyRecurring ? 'event-appearing' : ''} ${isNewlyDailyRecurring ? 'daily-recurring-fade' : ''}`}
                     style={{
                       top: position.top,
                       height: position.height,
                       left: absoluteLeft,
                       width: absoluteWidth,
-                      opacity: isAppearing ? undefined : ((isBeingDragged || isBeingResized) ? 0.3 : (isCut ? 0.5 : 1)),
-                      transition: (isBeingDragged || isBeingResized || isAppearing || isDeleting || isMovingAllRecurring) ? 'none' : 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                      boxShadow: isSearchHighlight ? '0 0 0 4px #ef4444, 0 0 0 6px rgba(239, 68, 68, 0.5), 0 0 12px rgba(239, 68, 68, 0.4)' : 'none'
+                      opacity: getDailyOpacity() !== undefined ? getDailyOpacity() : (isNewlyDailyRecurring ? undefined : (isAppearing && !isDailyRecurring ? undefined : ((isBeingDragged || isBeingResized) ? 0.3 : (isCut ? 0.5 : 1)))),
+                      transition: (isBeingDragged || isBeingResized || hasJustFinishedDragging || (isAppearing && !isDailyRecurring) || isDeleting || isMovingAllRecurring || isNewlyDailyRecurring) ? 'none' : 'left 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                      boxShadow: isSearchHighlight ? '0 0 0 4px #ef4444, 0 0 0 6px rgba(239, 68, 68, 0.5), 0 0 12px rgba(239, 68, 68, 0.4)' : 'none',
+                      animationDelay: isNewlyDailyRecurring ? `${Math.max(0, (dayIndex - 1) * 0.08)}s` : undefined
                     }}
                   >
                     <Event

@@ -27,6 +27,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   className = ''
 }) => {
   const [editedEvent, setEditedEvent] = useState<CalendarEvent | null>(null);
+  const [localTitle, setLocalTitle] = useState('');
+  const [localDescription, setLocalDescription] = useState('');
   const [repeatOption, setRepeatOption] = useState<string>('none');
   const [editingField, setEditingField] = useState<'start' | 'end' | 'repeat' | 'category' | 'color' | 'reminder' | 'meeting' | null>(null);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
@@ -180,7 +182,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
         }
         // For non-recurring events, new events, or minor changes, save directly
         onSave(eventToSave);
-      }, 1000); // Increased debounce to 1 second for less flickering
+      }, 300); // Reduced debounce for better responsiveness
     },
     [onSave, event, isRecurringEvent]
   );
@@ -227,6 +229,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
         editedEvent.start !== event.start ||
         editedEvent.end !== event.end)) {
       setEditedEvent({ ...event });
+      setLocalTitle(event.title || '');
+      setLocalDescription(event.description || '');
       // If event has a meeting value, set the flag
       if (event.meeting) {
         setHasMeetingBeenSelected(true);
@@ -368,14 +372,14 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
 
     // Small delay to prevent immediate closing when the editor opens
     const timer = setTimeout(() => {
-      // Use normal bubble phase to allow button clicks to work
-      document.addEventListener('mousedown', handleClickOutside);
+      // Use click event instead of mousedown to avoid timing conflicts with button onClick
+      document.addEventListener('click', handleClickOutside);
       document.addEventListener('keydown', handleKeyDown);
     }, 100);
 
     return () => {
       clearTimeout(timer);
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('click', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [onCancel, onSave, onDelete, isFullScreen, saveTimeout, hasEventBeenModified, editedEvent]);
@@ -448,6 +452,38 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
     }
   };
 
+  const previewTime = (field: 'start' | 'end', newTimeISO: string | null) => {
+    if (!editedEvent) return;
+
+    // If hovering, show preview immediately without saving
+    if (newTimeISO) {
+      // Keep the same date but use the new time
+      const newTime = new Date(newTimeISO);
+      const currentDate = new Date(editedEvent[field]);
+      currentDate.setHours(newTime.getHours(), newTime.getMinutes(), 0, 0);
+
+      const previewEvent = { ...editedEvent, [field]: currentDate.toISOString() };
+
+      // If adjusting start time and end would be before start, adjust end too
+      if (field === 'start' && new Date(previewEvent.start) >= new Date(previewEvent.end)) {
+        const duration = new Date(editedEvent.end).getTime() - new Date(editedEvent.start).getTime();
+        const newEnd = new Date(currentDate.getTime() + duration);
+        previewEvent.end = newEnd.toISOString();
+      }
+
+      // If adjusting end time and it would be before start, keep minimum 30 min duration
+      if (field === 'end' && new Date(previewEvent.end) <= new Date(previewEvent.start)) {
+        const minEnd = new Date(new Date(previewEvent.start).getTime() + 30 * 60 * 1000);
+        previewEvent.end = minEnd.toISOString();
+      }
+
+      onSave(previewEvent, true); // Pass true to indicate this is just a preview
+    } else {
+      // Restore original time when not hovering
+      onSave(editedEvent, true);
+    }
+  };
+
   const updateEvent = (field: keyof CalendarEvent, value: any) => {
     if (!editedEvent) return;
 
@@ -471,10 +507,15 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
           delete updatedWithRecurrence.recurrence;
           break;
       }
-      // Debounce save to prevent flickering
-      debouncedSave(updatedWithRecurrence);
+      // Save recurrence changes immediately for better UX
+      if (saveTimeout.current) clearTimeout(saveTimeout.current);
+      onSave(updatedWithRecurrence);
+    } else if (field === 'title') {
+      // Save title changes immediately without debounce for live preview
+      if (saveTimeout.current) clearTimeout(saveTimeout.current);
+      onSave(updated);
     } else {
-      // Always debounce all saves to prevent flickering and focus loss
+      // Debounce other saves to prevent flickering and focus loss
       // The state update above will immediately update the UI
       // But the actual save is debounced to prevent re-renders
       debouncedSave(updated);
@@ -530,8 +571,32 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
           <input
             ref={titleInputRef}
             type="text"
-            value={editedEvent.title}
-            onChange={(e) => updateEvent('title', e.target.value)}
+            value={localTitle}
+            onChange={(e) => {
+              const newTitle = e.target.value;
+              setLocalTitle(newTitle);
+              // Update the event immediately for live preview
+              if (editedEvent) {
+                const updated = { ...editedEvent, title: newTitle };
+                setEditedEvent(updated);
+                // For new events, don't save on every keystroke to prevent focus loss
+                // Only save for existing events to maintain live preview
+                if (!editedEvent.justCreated) {
+                  // Save immediately for instant visual feedback on existing events
+                  onSave(updated);
+                }
+              }
+            }}
+            onBlur={() => {
+              // For new events, save when losing focus
+              if (editedEvent && editedEvent.justCreated) {
+                const eventToSave = { ...editedEvent };
+                delete eventToSave.justCreated; // Clear the flag now that user is done
+                onSave(eventToSave);
+                setTitleInputEnabled(false); // Disable input after saving new event
+              }
+              // No need for onBlur save for existing events since we're saving on every change
+            }}
             autoFocus={false}
             tabIndex={titleInputEnabled ? 0 : -1}
             readOnly={!titleInputEnabled}
@@ -555,30 +620,35 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                 e.preventDefault();
                 e.stopPropagation();
                 // If title is empty, don't save or close
-                if (!editedEvent.title.trim()) {
+                if (!localTitle.trim()) {
                   return;
                 }
-                // Mark as no longer new (stops the yellow border)
-                setIsNewEvent(false);
-                // Force immediate save when Enter is pressed with a title
-                if (saveTimeout.current) {
-                  clearTimeout(saveTimeout.current);
-                }
-                // Clear justCreated flag when saving
-                const eventToSave = { ...editedEvent };
-                delete eventToSave.justCreated;
-                onSave(eventToSave);
-                // Blur the input to remove focus
-                if (titleInputRef.current) {
-                  titleInputRef.current.blur();
+                // Update event with local title before saving
+                if (editedEvent) {
+                  const updatedEvent = { ...editedEvent, title: localTitle };
+                  setEditedEvent(updatedEvent);
+                  // Mark as no longer new (stops the yellow border)
+                  setIsNewEvent(false);
+                  // Force immediate save when Enter is pressed with a title
+                  if (saveTimeout.current) {
+                    clearTimeout(saveTimeout.current);
+                  }
+                  // Clear justCreated flag when saving
+                  const eventToSave = { ...updatedEvent };
+                  delete eventToSave.justCreated;
+                  onSave(eventToSave);
+                  // Blur the input to remove focus
+                  if (titleInputRef.current) {
+                    titleInputRef.current.blur();
+                  }
                 }
               } else if (e.key === 'Delete' || e.key === 'Backspace') {
                 // Delete the event if it's empty (no title)
-                if (!editedEvent.title.trim()) {
+                if (!localTitle.trim()) {
                   console.log('EventEditor: Delete pressed on empty title, deleting event');
                   e.preventDefault();
                   e.stopPropagation();
-                  if (onDelete) {
+                  if (onDelete && editedEvent) {
                     onDelete(editedEvent.id);
                   }
                   onCancel();
@@ -588,12 +658,13 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                 e.preventDefault();
                 e.stopPropagation();
                 // Save any pending changes if there's a title
-                if (editedEvent.title.trim()) {
+                if (localTitle.trim() && editedEvent) {
+                  const updatedEvent = { ...editedEvent, title: localTitle };
                   if (saveTimeout.current) {
                     clearTimeout(saveTimeout.current);
                   }
                   // Clear justCreated flag when saving
-                  const eventToSave = { ...editedEvent };
+                  const eventToSave = { ...updatedEvent };
                   delete eventToSave.justCreated;
                   onSave(eventToSave);
                 }
@@ -601,14 +672,16 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
               }
             }}
             onBlur={() => {
-              // Force save immediately when input loses focus
-              forceSave();
+              // Save the local title if changed
+              if (editedEvent && localTitle !== editedEvent.title) {
+                updateEvent('title', localTitle);
+              }
               // Remove the new event flag when losing focus
               setIsNewEvent(false);
             }}
-            className={`flex-1 text-xl sm:text-2xl font-semibold bg-transparent border ${isNewEvent && !editedEvent.title ? 'border-yellow-300' : 'border-transparent'} hover:border-gray-200 focus:border-gray-300 rounded-md px-2 sm:px-3 py-1 sm:py-1.5 outline-none focus:ring-0 text-gray-900 placeholder-gray-400 transition-colors min-w-0 truncate focus:overflow-visible focus:text-clip ${!titleInputEnabled ? 'cursor-text hover:bg-gray-50' : ''}`}
+            className={`flex-1 text-xl sm:text-2xl font-semibold bg-transparent border ${isNewEvent && !localTitle ? 'border-yellow-300' : 'border-transparent'} hover:border-gray-200 focus:border-gray-300 rounded-md px-2 sm:px-3 py-1 sm:py-1.5 outline-none focus:ring-0 text-gray-900 placeholder-gray-400 transition-colors min-w-0 truncate focus:overflow-visible focus:text-clip ${!titleInputEnabled ? 'cursor-text hover:bg-gray-50' : ''}`}
             placeholder={isNewEvent ? "Type event name..." : "Event name"}
-            title={editedEvent.title}
+            title={localTitle}
           />
           {onDelete && (
             <button
@@ -648,7 +721,12 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                   <div className="relative">
                     <button
                       ref={startTimeRef as React.RefObject<HTMLButtonElement>}
-                      onClick={() => setEditingField(editingField === 'start' ? null : 'start')}
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        const newField = editingField === 'start' ? null : 'start';
+                        setEditingField(newField);
+                      }}
                       className={`px-2 py-0.5 -ml-2 text-gray-700 hover:text-gray-900 rounded transition-colors ${
                         editingField === 'start' ? 'bg-gray-50' : 'hover:bg-gray-50'
                       }`}
@@ -663,8 +741,31 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                       onClose={() => {
                         setEditingField(null);
                         setHoveredStartTime(null);
+                        previewTime('start', null);  // Reset preview on close
                       }}
-                      onHover={(time) => setHoveredStartTime(time)}
+                      onHover={(timeStr) => {
+                        setHoveredStartTime(timeStr);
+                        if (timeStr) {
+                          // Convert the time string (e.g., "3:00 PM") to ISO datetime
+                          const [time, period] = timeStr.split(' ');
+                          const [hourStr, minuteStr] = time.split(':');
+                          let hour = parseInt(hourStr, 10);
+                          const minute = parseInt(minuteStr, 10);
+
+                          // Convert to 24-hour format
+                          if (period === 'PM' && hour !== 12) hour += 12;
+                          if (period === 'AM' && hour === 12) hour = 0;
+
+                          // Create new datetime with the hovered time
+                          const currentDate = new Date(editedEvent.start);
+                          const previewDate = new Date(currentDate);
+                          previewDate.setHours(hour, minute, 0, 0);
+
+                          previewTime('start', previewDate.toISOString());
+                        } else {
+                          previewTime('start', null);
+                        }
+                      }}
                     />
                   </div>
 
@@ -675,7 +776,12 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                   <div className="relative">
                     <button
                       ref={endTimeRef as React.RefObject<HTMLButtonElement>}
-                      onClick={() => setEditingField(editingField === 'end' ? null : 'end')}
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        const newField = editingField === 'end' ? null : 'end';
+                        setEditingField(newField);
+                      }}
                       className={`px-2 py-0.5 text-gray-700 hover:text-gray-900 rounded transition-colors ${
                         editingField === 'end' ? 'bg-gray-50' : 'hover:bg-gray-50'
                       }`}
@@ -684,14 +790,37 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                     </button>
                     <PortalTimePicker
                       isOpen={editingField === 'end'}
-                      triggerRef={startTimeRef}  // Use the start time ref as anchor so both appear in same spot
+                      triggerRef={endTimeRef}
                       value={editedEvent.end}
                       onChange={(time) => updateTimeFromPicker('end', time)}
                       onClose={() => {
                         setEditingField(null);
                         setHoveredEndTime(null);
+                        previewTime('end', null);  // Reset preview on close
                       }}
-                      onHover={(time) => setHoveredEndTime(time)}
+                      onHover={(timeStr) => {
+                        setHoveredEndTime(timeStr);
+                        if (timeStr) {
+                          // Convert the time string (e.g., "3:00 PM") to ISO datetime
+                          const [time, period] = timeStr.split(' ');
+                          const [hourStr, minuteStr] = time.split(':');
+                          let hour = parseInt(hourStr, 10);
+                          const minute = parseInt(minuteStr, 10);
+
+                          // Convert to 24-hour format
+                          if (period === 'PM' && hour !== 12) hour += 12;
+                          if (period === 'AM' && hour === 12) hour = 0;
+
+                          // Create new datetime with the hovered time
+                          const currentDate = new Date(editedEvent.end);
+                          const previewDate = new Date(currentDate);
+                          previewDate.setHours(hour, minute, 0, 0);
+
+                          previewTime('end', previewDate.toISOString());
+                        } else {
+                          previewTime('end', null);
+                        }
+                      }}
                     />
                   </div>
 
@@ -797,7 +926,13 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
               eventDate={editedEvent.start}
               onChange={(rrule) => {
                 // Update the recurrence field with the actual RRULE string
-                updateEvent('recurrence', rrule);
+                // For recurrence changes from RepeatPicker, save immediately
+                if (!editedEvent) return;
+                const updatedEvent = { ...editedEvent, recurrence: rrule };
+                setEditedEvent(updatedEvent);
+                // Save immediately for recurrence changes
+                if (saveTimeout.current) clearTimeout(saveTimeout.current);
+                onSave(updatedEvent);
                 // Update display state based on RRULE
                 if (!rrule) {
                   setRepeatOption('none');
@@ -1622,8 +1757,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
           <DeleteRecurringModal
             event={editedEvent}
             onClose={() => setShowDeleteModal(false)}
-            onDelete={(option) => {
-              console.log('EventEditor: DeleteRecurringModal onDelete called with:', option);
+            onConfirm={(option) => {
+              console.log('EventEditor: DeleteRecurringModal onConfirm called with:', option);
               console.log('EventEditor: editedEvent:', editedEvent);
               console.log('EventEditor: onDelete function exists:', !!onDelete);
 

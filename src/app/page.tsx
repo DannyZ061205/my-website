@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, startTransition } from 'react';
 import { TodoModule } from '@/components/todo/TodoModule';
 import { CalendarModule } from '@/components/calendar/CalendarModule';
 import { ChatModule } from '@/components/chat/ChatModule';
@@ -398,6 +398,8 @@ export default function ChronosApp() {
                     <EventEditor
                       event={selectedEvent}
                       onSave={(updatedEvent, updateOption) => {
+                        const saveStart = performance.now();
+
                         // Check if this is just a color preview (boolean true)
                         const isPreview = updateOption === true;
 
@@ -410,35 +412,111 @@ export default function ChronosApp() {
                           // For recurring events, we need to handle the update properly
                           console.log('Handling recurring event update with option:', updateOption);
 
-                          // For now, just update the base event
-                          // The CalendarModule will handle creating exceptions and splits
-                          setCalendarEvents(prev => {
-                            return prev.map(e => e.id === cleanedEvent.id ? cleanedEvent : e);
-                          });
-                        } else {
-                          // Normal update
-                          setCalendarEvents(prev => {
-                            // Check if event exists in array
-                            const exists = prev.some(e => e.id === cleanedEvent.id);
-                            if (!exists) {
-                              // Add the event if it doesn't exist (new event case)
-                              return [...prev, cleanedEvent];
-                            } else {
-                              // Update existing event
-                              return prev.map(e => e.id === cleanedEvent.id ? cleanedEvent : e);
+                          // Check if this is a virtual event
+                          if (cleanedEvent.isVirtual && cleanedEvent.parentId) {
+                            if (updateOption === 'single') {
+                              // Create an exception event for this specific occurrence
+                              const exceptionEvent = {
+                                ...cleanedEvent,
+                                id: `exception-${Date.now()}`, // New unique ID for the exception
+                                isVirtual: false,
+                                parentId: undefined,
+                                recurrenceGroupId: cleanedEvent.parentId,
+                                recurrence: undefined // Exceptions don't have recurrence
+                              };
+
+                              // Add exception event and exclude this date from parent
+                              setCalendarEvents(prev => {
+                                // Find parent event
+                                const parent = prev.find(e => e.id === cleanedEvent.parentId);
+                                if (!parent) return prev;
+
+                                // Update parent with excluded date
+                                const updatedParent = {
+                                  ...parent,
+                                  excludedDates: [
+                                    ...(parent.excludedDates || []),
+                                    cleanedEvent.start
+                                  ]
+                                };
+
+                                // Add exception and update parent
+                                return [
+                                  ...prev.filter(e => e.id !== parent.id),
+                                  updatedParent,
+                                  exceptionEvent
+                                ];
+                              });
+                            } else if (updateOption === 'all') {
+                              // Update the parent event with new properties
+                              setCalendarEvents(prev => {
+                                return prev.map(e => {
+                                  if (e.id === cleanedEvent.parentId) {
+                                    // Apply changes to parent, keeping recurrence
+                                    return {
+                                      ...e,
+                                      title: cleanedEvent.title,
+                                      color: cleanedEvent.color,
+                                      description: cleanedEvent.description,
+                                      location: cleanedEvent.location,
+                                      // Don't update start/end times or recurrence
+                                    };
+                                  }
+                                  return e;
+                                });
+                              });
+                            } else if (updateOption === 'following') {
+                              // Split the series - create a new recurring event from this point
+                              console.log('Splitting series for following events');
+                              // This requires more complex logic - CalendarModule should handle it
                             }
+                          } else {
+                            // Non-virtual event or base event - update normally
+                            setCalendarEvents(prev => {
+                              return prev.map(e => e.id === cleanedEvent.id ? cleanedEvent : e);
+                            });
+                          }
+                        } else {
+                          // Normal update - use startTransition for better performance with recurring events
+                          startTransition(() => {
+                            setCalendarEvents(prev => {
+                              // Check if event exists in array
+                              const exists = prev.some(e => e.id === cleanedEvent.id);
+                              if (!exists) {
+                                // Add the event if it doesn't exist (new event case)
+                                return [...prev, cleanedEvent];
+                              } else {
+                                // Update existing event
+                                return prev.map(e => e.id === cleanedEvent.id ? cleanedEvent : e);
+                              }
+                            });
                           });
                         }
 
                         // Always update selectedEvent to keep it in sync (removes justCreated flag)
                         if (selectedEvent && selectedEvent.id === cleanedEvent.id) {
                           if (isPreview) {
-                            // For previews, only update the color
-                            setSelectedEvent({ ...selectedEvent, color: cleanedEvent.color });
+                            // For previews, update color and time properties
+                            const previewEvent = {
+                              ...selectedEvent,
+                              color: cleanedEvent.color,
+                              start: cleanedEvent.start,
+                              end: cleanedEvent.end
+                            };
+                            setSelectedEvent(previewEvent);
+                            // Also update in calendarEvents for immediate visual feedback
+                            setCalendarEvents(prev => prev.map(e =>
+                              e.id === cleanedEvent.id ? previewEvent : e
+                            ));
                           } else {
                             // For actual saves, update the entire event (this removes justCreated)
                             setSelectedEvent(cleanedEvent);
                           }
+                        }
+
+                        const saveEnd = performance.now();
+                        if (!isPreview && saveEnd - saveStart > 50) {
+                          console.warn(`Event save took ${(saveEnd - saveStart).toFixed(2)}ms`);
                         }
                       }}
                       onDelete={(eventId) => {
@@ -521,6 +599,8 @@ export default function ChronosApp() {
                     <EventEditor
                       event={selectedEvent}
                       onSave={(updatedEvent, updateOption) => {
+                        const saveStart = performance.now();
+
                         // Check if this is just a color preview (boolean true)
                         const isPreview = updateOption === true;
 
@@ -533,35 +613,111 @@ export default function ChronosApp() {
                           // For recurring events, we need to handle the update properly
                           console.log('Handling recurring event update with option:', updateOption);
 
-                          // For now, just update the base event
-                          // The CalendarModule will handle creating exceptions and splits
-                          setCalendarEvents(prev => {
-                            return prev.map(e => e.id === cleanedEvent.id ? cleanedEvent : e);
-                          });
-                        } else {
-                          // Normal update
-                          setCalendarEvents(prev => {
-                            // Check if event exists in array
-                            const exists = prev.some(e => e.id === cleanedEvent.id);
-                            if (!exists) {
-                              // Add the event if it doesn't exist (new event case)
-                              return [...prev, cleanedEvent];
-                            } else {
-                              // Update existing event
-                              return prev.map(e => e.id === cleanedEvent.id ? cleanedEvent : e);
+                          // Check if this is a virtual event
+                          if (cleanedEvent.isVirtual && cleanedEvent.parentId) {
+                            if (updateOption === 'single') {
+                              // Create an exception event for this specific occurrence
+                              const exceptionEvent = {
+                                ...cleanedEvent,
+                                id: `exception-${Date.now()}`, // New unique ID for the exception
+                                isVirtual: false,
+                                parentId: undefined,
+                                recurrenceGroupId: cleanedEvent.parentId,
+                                recurrence: undefined // Exceptions don't have recurrence
+                              };
+
+                              // Add exception event and exclude this date from parent
+                              setCalendarEvents(prev => {
+                                // Find parent event
+                                const parent = prev.find(e => e.id === cleanedEvent.parentId);
+                                if (!parent) return prev;
+
+                                // Update parent with excluded date
+                                const updatedParent = {
+                                  ...parent,
+                                  excludedDates: [
+                                    ...(parent.excludedDates || []),
+                                    cleanedEvent.start
+                                  ]
+                                };
+
+                                // Add exception and update parent
+                                return [
+                                  ...prev.filter(e => e.id !== parent.id),
+                                  updatedParent,
+                                  exceptionEvent
+                                ];
+                              });
+                            } else if (updateOption === 'all') {
+                              // Update the parent event with new properties
+                              setCalendarEvents(prev => {
+                                return prev.map(e => {
+                                  if (e.id === cleanedEvent.parentId) {
+                                    // Apply changes to parent, keeping recurrence
+                                    return {
+                                      ...e,
+                                      title: cleanedEvent.title,
+                                      color: cleanedEvent.color,
+                                      description: cleanedEvent.description,
+                                      location: cleanedEvent.location,
+                                      // Don't update start/end times or recurrence
+                                    };
+                                  }
+                                  return e;
+                                });
+                              });
+                            } else if (updateOption === 'following') {
+                              // Split the series - create a new recurring event from this point
+                              console.log('Splitting series for following events');
+                              // This requires more complex logic - CalendarModule should handle it
                             }
+                          } else {
+                            // Non-virtual event or base event - update normally
+                            setCalendarEvents(prev => {
+                              return prev.map(e => e.id === cleanedEvent.id ? cleanedEvent : e);
+                            });
+                          }
+                        } else {
+                          // Normal update - use startTransition for better performance with recurring events
+                          startTransition(() => {
+                            setCalendarEvents(prev => {
+                              // Check if event exists in array
+                              const exists = prev.some(e => e.id === cleanedEvent.id);
+                              if (!exists) {
+                                // Add the event if it doesn't exist (new event case)
+                                return [...prev, cleanedEvent];
+                              } else {
+                                // Update existing event
+                                return prev.map(e => e.id === cleanedEvent.id ? cleanedEvent : e);
+                              }
+                            });
                           });
                         }
 
                         // Always update selectedEvent to keep it in sync (removes justCreated flag)
                         if (selectedEvent && selectedEvent.id === cleanedEvent.id) {
                           if (isPreview) {
-                            // For previews, only update the color
-                            setSelectedEvent({ ...selectedEvent, color: cleanedEvent.color });
+                            // For previews, update color and time properties
+                            const previewEvent = {
+                              ...selectedEvent,
+                              color: cleanedEvent.color,
+                              start: cleanedEvent.start,
+                              end: cleanedEvent.end
+                            };
+                            setSelectedEvent(previewEvent);
+                            // Also update in calendarEvents for immediate visual feedback
+                            setCalendarEvents(prev => prev.map(e =>
+                              e.id === cleanedEvent.id ? previewEvent : e
+                            ));
                           } else {
                             // For actual saves, update the entire event (this removes justCreated)
                             setSelectedEvent(cleanedEvent);
                           }
+                        }
+
+                        const saveEnd = performance.now();
+                        if (!isPreview && saveEnd - saveStart > 50) {
+                          console.warn(`Event save took ${(saveEnd - saveStart).toFixed(2)}ms`);
                         }
                       }}
                       onDelete={(eventId) => {
@@ -693,7 +849,15 @@ export default function ChronosApp() {
               className="flex-1"
               calendarEvents={calendarEvents}
               selectedEventId={selectedEvent?.id}
-              onEventUpdate={(events) => setCalendarEvents(events)}
+              onEventUpdate={(events) => {
+                console.log('onEventUpdate called with events:', events);
+                // Don't update if events is empty - this is likely a bug
+                if (events && events.length > 0) {
+                  setCalendarEvents(events);
+                } else {
+                  console.warn('Attempted to set empty events array - ignoring');
+                }
+              }}
               onEditEvent={(event) => {
                 console.log('=== onEventEdit called in page.tsx ===');
                 console.log('Event being edited:', event);
@@ -809,23 +973,96 @@ export default function ChronosApp() {
                           const cleanedEvent = { ...updatedEvent };
                           delete cleanedEvent.justCreated;
 
-                          setCalendarEvents(prev => {
-                            // Check if event exists in array
-                            const exists = prev.some(e => e.id === cleanedEvent.id);
-                            if (!exists) {
-                              // Add the event if it doesn't exist (new event case)
-                              return [...prev, cleanedEvent];
+                          // Handle recurring event updates based on option
+                          if (updateOption === 'single' || updateOption === 'following' || updateOption === 'all') {
+                            // Check if this is a virtual event
+                            if (cleanedEvent.isVirtual && cleanedEvent.parentId) {
+                              if (updateOption === 'single') {
+                                // Create an exception event for this specific occurrence
+                                const exceptionEvent = {
+                                  ...cleanedEvent,
+                                  id: `exception-${Date.now()}`,
+                                  isVirtual: false,
+                                  parentId: undefined,
+                                  recurrenceGroupId: cleanedEvent.parentId,
+                                  recurrence: undefined
+                                };
+
+                                setCalendarEvents(prev => {
+                                  const parent = prev.find(e => e.id === cleanedEvent.parentId);
+                                  if (!parent) return prev;
+
+                                  const updatedParent = {
+                                    ...parent,
+                                    excludedDates: [
+                                      ...(parent.excludedDates || []),
+                                      cleanedEvent.start
+                                    ]
+                                  };
+
+                                  return [
+                                    ...prev.filter(e => e.id !== parent.id),
+                                    updatedParent,
+                                    exceptionEvent
+                                  ];
+                                });
+                              } else if (updateOption === 'all') {
+                                // Update the parent event
+                                setCalendarEvents(prev => {
+                                  return prev.map(e => {
+                                    if (e.id === cleanedEvent.parentId) {
+                                      return {
+                                        ...e,
+                                        title: cleanedEvent.title,
+                                        color: cleanedEvent.color,
+                                        description: cleanedEvent.description,
+                                        location: cleanedEvent.location,
+                                      };
+                                    }
+                                    return e;
+                                  });
+                                });
+                              }
                             } else {
-                              // Update existing event
-                              return prev.map(e => e.id === cleanedEvent.id ? cleanedEvent : e);
+                              // Non-virtual event - update normally
+                              setCalendarEvents(prev => {
+                                const exists = prev.some(e => e.id === cleanedEvent.id);
+                                if (!exists) {
+                                  return [...prev, cleanedEvent];
+                                } else {
+                                  return prev.map(e => e.id === cleanedEvent.id ? cleanedEvent : e);
+                                }
+                              });
                             }
-                          });
+                          } else {
+                            setCalendarEvents(prev => {
+                              // Check if event exists in array
+                              const exists = prev.some(e => e.id === cleanedEvent.id);
+                              if (!exists) {
+                                // Add the event if it doesn't exist (new event case)
+                                return [...prev, cleanedEvent];
+                              } else {
+                                // Update existing event
+                                return prev.map(e => e.id === cleanedEvent.id ? cleanedEvent : e);
+                              }
+                            });
+                          }
 
                           // Always update selectedEvent to keep it in sync (removes justCreated flag)
                           if (selectedEvent && selectedEvent.id === cleanedEvent.id) {
                             if (isPreview) {
-                              // For previews, only update the color
-                              setSelectedEvent({ ...selectedEvent, color: cleanedEvent.color });
+                              // For previews, update color and time properties
+                              const previewEvent = {
+                                ...selectedEvent,
+                                color: cleanedEvent.color,
+                                start: cleanedEvent.start,
+                                end: cleanedEvent.end
+                              };
+                              setSelectedEvent(previewEvent);
+                              // Also update in calendarEvents for immediate visual feedback
+                              setCalendarEvents(prev => prev.map(e =>
+                                e.id === cleanedEvent.id ? previewEvent : e
+                              ));
                             } else {
                               // For actual saves, update the entire event (this removes justCreated)
                               setSelectedEvent(cleanedEvent);
