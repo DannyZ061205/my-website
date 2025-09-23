@@ -590,6 +590,8 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
 
   // Track if we're in an undo/redo operation
   const [isUndoRedoOperation, setIsUndoRedoOperation] = useState(false);
+  // Track if we're moving all recurring events
+  const [isMovingAllRecurring, setIsMovingAllRecurring] = useState(false);
 
   // Track if search bar should be visible based on width
   const [isSearchBarVisible, setIsSearchBarVisible] = useState(true);
@@ -2358,7 +2360,7 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                       left: absoluteLeft,
                       width: absoluteWidth,
                       opacity: isAppearing ? undefined : ((isBeingDragged || isBeingResized) ? 0.3 : (isCut ? 0.5 : 1)),
-                      transition: (isBeingDragged || isBeingResized || isAppearing || isDeleting) ? 'none' : 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                      transition: (isBeingDragged || isBeingResized || isAppearing || isDeleting || isMovingAllRecurring) ? 'none' : 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                       boxShadow: isSearchHighlight ? '0 0 0 4px #ef4444, 0 0 0 6px rgba(239, 68, 68, 0.5), 0 0 12px rgba(239, 68, 68, 0.4)' : 'none'
                     }}
                   >
@@ -3300,6 +3302,9 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
             } else if (option === 'all') {
               console.log('Processing all events for event:', modal.event.id);
 
+              // Set flag to disable animations for all events
+              setIsMovingAllRecurring(true);
+
               // Check what type of event this is
               const isBaseEvent = modal.event.recurrence && modal.event.recurrence !== 'none' && !modal.event.isVirtual;
               const isExceptionEvent = !modal.event.recurrence && modal.event.recurrenceGroupId && !modal.event.isVirtual;
@@ -3334,6 +3339,11 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
 
               // Use baseEvents as currentEvents to avoid including virtual events in history
               addToHistory(updatedEvents, baseEvents);
+
+              // Clear the flag after a short delay to allow the change to propagate
+              setTimeout(() => {
+                setIsMovingAllRecurring(false);
+              }, 100);
             }
 
             console.log('Closing EditRecurringModal and resetting states');
