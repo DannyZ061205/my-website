@@ -37,6 +37,11 @@ export function generateVirtualEvents(
   // Parse recurrence rule
   const rrule = baseEvent.recurrence;
 
+  // If no recurrence rule, return empty array
+  if (!rrule || typeof rrule !== 'string') {
+    return [];
+  }
+
   // Parse UNTIL date if present
   let untilDate: Date | null = null;
   const untilMatch = rrule.match(/UNTIL=(\d{8}T\d{6}Z?)/);
