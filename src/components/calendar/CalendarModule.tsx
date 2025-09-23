@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { CalendarEvent, EventColor } from '@/types';
 import { EventContextMenu } from './EventContextMenu';
 import { EditRecurringModal } from './EditRecurringModal';
+import { DeleteRecurringModal } from './DeleteRecurringModal';
 import { getEventsWithVirtual } from '@/utils/recurrence';
 
 interface CalendarModuleProps {
@@ -562,6 +563,12 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
     action: 'move' | 'resize';
     newStart?: Date;
     newEnd?: Date;
+  } | null>(null);
+
+  // Modal for deleting recurring events
+  const [deleteRecurringModal, setDeleteRecurringModal] = useState<{
+    event: CalendarEvent;
+    onDelete: (option: 'single' | 'following' | 'all') => void;
   } | null>(null);
   const mousePositionRef = useRef<{ x: number; y: number; dayIndex: number } | null>(null);
   const [focusedEventId, setFocusedEventId] = useState<string | null>(null);
@@ -2723,31 +2730,117 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
           onCopy={handleCopy}
           onDuplicate={handleDuplicate}
           onDelete={(event) => {
-            // Animate deletion
-            // First mark it as deleting to trigger the animation
-            setInternalDeletingEventIds(prev => new Set([...prev, event.id]));
+            // Check if this is a recurring event
+            const isRecurringEvent =
+              (event.isVirtual && event.parentId) ||  // Virtual occurrence
+              (event.recurrence && event.recurrence !== 'none') ||  // Base recurring event
+              (event.recurrenceGroupId && !event.isVirtual);  // Exception event
 
-            // Clear focus and context menu immediately for better UX
-            setFocusedEventId(null);
+            // Clear context menu immediately for better UX
             setContextMenu(null);
 
-            // Always handle deletion through history system for proper undo
-            setTimeout(() => {
-              const updatedEvents = baseEvents.filter(e => e.id !== event.id);
-              addToHistory(updatedEvents, baseEvents);
+            if (isRecurringEvent) {
+              // Show delete modal for recurring events
+              console.log('Showing delete modal for recurring event:', event.id);
+              setDeleteRecurringModal({
+                event,
+                onDelete: (option: 'single' | 'following' | 'all') => {
+                  console.log('Delete recurring with option:', option);
 
-              // Also call external handler if it exists (for UI updates)
-              if (onDeleteEvent) {
-                onDeleteEvent(event.id);
-              }
+                  // Mark as deleting for animation
+                  setInternalDeletingEventIds(prev => new Set([...prev, event.id]));
+                  setFocusedEventId(null);
 
-              // Clean up the deleting state after removal
-              setInternalDeletingEventIds(prev => {
-                const next = new Set(prev);
-                next.delete(event.id);
-                return next;
+                  setTimeout(() => {
+                    if (option === 'single') {
+                      // For single deletion, add to excluded dates if it's a virtual event
+                      if (event.isVirtual && event.parentId) {
+                        const parentEvent = baseEvents.find(e => e.id === event.parentId);
+                        if (parentEvent) {
+                          const updatedParent = {
+                            ...parentEvent,
+                            excludedDates: [
+                              ...(parentEvent.excludedDates || []),
+                              event.start
+                            ]
+                          };
+                          const updatedEvents = baseEvents.map(e =>
+                            e.id === parentEvent.id ? updatedParent : e
+                          );
+                          addToHistory(updatedEvents, baseEvents);
+                        }
+                      } else {
+                        // For base events or exceptions, just remove it
+                        const updatedEvents = baseEvents.filter(e => e.id !== event.id);
+                        addToHistory(updatedEvents, baseEvents);
+                      }
+                    } else if (option === 'all') {
+                      // Delete the entire series
+                      const groupId = event.recurrenceGroupId || event.parentId || event.id;
+                      const updatedEvents = baseEvents.filter(e =>
+                        e.id !== groupId &&
+                        e.recurrenceGroupId !== groupId &&
+                        e.parentId !== groupId
+                      );
+                      addToHistory(updatedEvents, baseEvents);
+                    } else if (option === 'following') {
+                      // Delete this and following occurrences
+                      // This requires updating the recurrence rule to end before this date
+                      const eventDate = new Date(event.start);
+                      if (event.parentId) {
+                        const parentEvent = baseEvents.find(e => e.id === event.parentId);
+                        if (parentEvent && parentEvent.recurrence) {
+                          // Add UNTIL to the recurrence rule
+                          const updatedParent = {
+                            ...parentEvent,
+                            recurrence: parentEvent.recurrence.includes('UNTIL=')
+                              ? parentEvent.recurrence.replace(/UNTIL=[^;]+/, `UNTIL=${eventDate.toISOString().replace(/[-:]/g, '').split('.')[0]}Z`)
+                              : `${parentEvent.recurrence};UNTIL=${eventDate.toISOString().replace(/[-:]/g, '').split('.')[0]}Z`
+                          };
+                          const updatedEvents = baseEvents.map(e =>
+                            e.id === parentEvent.id ? updatedParent : e
+                          );
+                          addToHistory(updatedEvents, baseEvents);
+                        }
+                      }
+                    }
+
+                    // Also call external handler if it exists
+                    if (onDeleteEvent) {
+                      onDeleteEvent(event.id);
+                    }
+
+                    // Clean up the deleting state
+                    setInternalDeletingEventIds(prev => {
+                      const next = new Set(prev);
+                      next.delete(event.id);
+                      return next;
+                    });
+                  }, 250);
+
+                  setDeleteRecurringModal(null);
+                }
               });
-            }, 250);
+            } else {
+              // Non-recurring event - delete directly with animation
+              setInternalDeletingEventIds(prev => new Set([...prev, event.id]));
+              setFocusedEventId(null);
+
+              setTimeout(() => {
+                const updatedEvents = baseEvents.filter(e => e.id !== event.id);
+                addToHistory(updatedEvents, baseEvents);
+
+                if (onDeleteEvent) {
+                  onDeleteEvent(event.id);
+                }
+
+                setInternalDeletingEventIds(prev => {
+                  const next = new Set(prev);
+                  next.delete(event.id);
+                  return next;
+                });
+              }, 250);
+            }
           }}
         />
       )}
@@ -3161,6 +3254,17 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
             setResizeEdge(null);
             setIsDragging(false);
             setIsResizing(false);
+          }}
+        />
+      )}
+
+      {/* Delete Recurring Modal */}
+      {deleteRecurringModal && (
+        <DeleteRecurringModal
+          event={deleteRecurringModal.event}
+          onClose={() => setDeleteRecurringModal(null)}
+          onConfirm={(option) => {
+            deleteRecurringModal.onDelete(option);
           }}
         />
       )}

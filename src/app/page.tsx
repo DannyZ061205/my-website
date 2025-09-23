@@ -405,17 +405,30 @@ export default function ChronosApp() {
                         const cleanedEvent = { ...updatedEvent };
                         delete cleanedEvent.justCreated;
 
-                        setCalendarEvents(prev => {
-                          // Check if event exists in array
-                          const exists = prev.some(e => e.id === cleanedEvent.id);
-                          if (!exists) {
-                            // Add the event if it doesn't exist (new event case)
-                            return [...prev, cleanedEvent];
-                          } else {
-                            // Update existing event
+                        // Handle recurring event updates based on option
+                        if (updateOption === 'single' || updateOption === 'following' || updateOption === 'all') {
+                          // For recurring events, we need to handle the update properly
+                          console.log('Handling recurring event update with option:', updateOption);
+
+                          // For now, just update the base event
+                          // The CalendarModule will handle creating exceptions and splits
+                          setCalendarEvents(prev => {
                             return prev.map(e => e.id === cleanedEvent.id ? cleanedEvent : e);
-                          }
-                        });
+                          });
+                        } else {
+                          // Normal update
+                          setCalendarEvents(prev => {
+                            // Check if event exists in array
+                            const exists = prev.some(e => e.id === cleanedEvent.id);
+                            if (!exists) {
+                              // Add the event if it doesn't exist (new event case)
+                              return [...prev, cleanedEvent];
+                            } else {
+                              // Update existing event
+                              return prev.map(e => e.id === cleanedEvent.id ? cleanedEvent : e);
+                            }
+                          });
+                        }
 
                         // Always update selectedEvent to keep it in sync (removes justCreated flag)
                         if (selectedEvent && selectedEvent.id === cleanedEvent.id) {
@@ -515,17 +528,30 @@ export default function ChronosApp() {
                         const cleanedEvent = { ...updatedEvent };
                         delete cleanedEvent.justCreated;
 
-                        setCalendarEvents(prev => {
-                          // Check if event exists in array
-                          const exists = prev.some(e => e.id === cleanedEvent.id);
-                          if (!exists) {
-                            // Add the event if it doesn't exist (new event case)
-                            return [...prev, cleanedEvent];
-                          } else {
-                            // Update existing event
+                        // Handle recurring event updates based on option
+                        if (updateOption === 'single' || updateOption === 'following' || updateOption === 'all') {
+                          // For recurring events, we need to handle the update properly
+                          console.log('Handling recurring event update with option:', updateOption);
+
+                          // For now, just update the base event
+                          // The CalendarModule will handle creating exceptions and splits
+                          setCalendarEvents(prev => {
                             return prev.map(e => e.id === cleanedEvent.id ? cleanedEvent : e);
-                          }
-                        });
+                          });
+                        } else {
+                          // Normal update
+                          setCalendarEvents(prev => {
+                            // Check if event exists in array
+                            const exists = prev.some(e => e.id === cleanedEvent.id);
+                            if (!exists) {
+                              // Add the event if it doesn't exist (new event case)
+                              return [...prev, cleanedEvent];
+                            } else {
+                              // Update existing event
+                              return prev.map(e => e.id === cleanedEvent.id ? cleanedEvent : e);
+                            }
+                          });
+                        }
 
                         // Always update selectedEvent to keep it in sync (removes justCreated flag)
                         if (selectedEvent && selectedEvent.id === cleanedEvent.id) {
