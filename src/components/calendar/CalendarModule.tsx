@@ -3064,53 +3064,25 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
               if (shouldMergeWithExisting && seriestoMergeWith) {
                 console.log('Merging split series back with original:', seriestoMergeWith.id);
 
-                // When merging back, we need to ensure continuity
-                // The series we're merging with should extend to cover the gap
-                const splitSeriesStart = new Date(modal.event.start);
-
-                // Find the UNTIL date of the series we're merging with
-                const untilMatch = seriestoMergeWith.recurrence?.match(/UNTIL=([^;]+)/);
-                let shouldUpdateUntil = false;
-
-                if (untilMatch) {
-                  // Parse the UNTIL date
-                  const untilStr = untilMatch[1];
-                  const year = parseInt(untilStr.substring(0, 4));
-                  const month = parseInt(untilStr.substring(4, 6)) - 1;
-                  const day = parseInt(untilStr.substring(6, 8));
-                  const currentUntil = new Date(year, month, day, 23, 59, 59);
-
-                  // Check if there's a gap between the UNTIL date and the split series start
-                  const daysDiff = Math.floor((splitSeriesStart.getTime() - currentUntil.getTime()) / (1000 * 60 * 60 * 24));
-
-                  // If there's a gap of more than the recurrence interval, we should update UNTIL
-                  if (seriestoMergeWith.recurrence?.includes('FREQ=DAILY') && daysDiff > 1) {
-                    shouldUpdateUntil = true;
-                  } else if (seriestoMergeWith.recurrence?.includes('FREQ=WEEKLY') && daysDiff > 7) {
-                    shouldUpdateUntil = true;
-                  }
-                }
-
+                // When merging back, simply remove the UNTIL constraint from the original series
+                // and delete the split series - this restores the continuous series
                 const updatedEvents = baseEvents.map(e => {
                   if (e.id === seriestoMergeWith.id) {
+                    // Remove UNTIL constraint to restore full series
                     let updatedRecurrence = e.recurrence || '';
-
-                    if (shouldUpdateUntil) {
-                      // Update UNTIL to the day before the split series starts
-                      const newUntil = new Date(splitSeriesStart);
-                      newUntil.setDate(newUntil.getDate() - 1);
-                      newUntil.setHours(23, 59, 59, 999);
-                      const newUntilStr = newUntil.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-                      updatedRecurrence = updatedRecurrence.replace(/;?UNTIL=[^;]*/g, '');
-                      updatedRecurrence = `${updatedRecurrence};UNTIL=${newUntilStr}`;
-                    } else {
-                      // Remove UNTIL constraint entirely to merge seamlessly
-                      updatedRecurrence = updatedRecurrence.replace(/;?UNTIL=[^;]*/g, '');
-                    }
+                    updatedRecurrence = updatedRecurrence.replace(/;?UNTIL=[^;]*/g, '');
 
                     return {
                       ...e,
-                      recurrence: updatedRecurrence
+                      recurrence: updatedRecurrence,
+                      // Also clear any excluded dates that might have been added
+                      excludedDates: (e.excludedDates || []).filter(date => {
+                        // Keep excluded dates that are not related to this merge
+                        const excludedDate = new Date(date);
+                        const eventDate = new Date(modal.event.start);
+                        // Remove exclusions for dates at or after the merge point
+                        return excludedDate < eventDate;
+                      })
                     };
                   }
                   return e;
@@ -3118,6 +3090,15 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                   // Remove the current split series since we're merging back
                   if (isSplitSeries && e.id === modal.event.id) {
                     return false;
+                  }
+                  // Also remove any other split series in the same group that would conflict
+                  if (e.id?.includes('-split-') && e.recurrenceGroupId === modal.event.recurrenceGroupId) {
+                    const splitStart = new Date(e.start);
+                    const mergeStart = new Date(modal.event.start);
+                    // Remove split series that start at or after the merge point
+                    if (splitStart >= mergeStart) {
+                      return false;
+                    }
                   }
                   return true;
                 });
@@ -3132,29 +3113,61 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                 const baseEvent = baseEvents.find(e => e.id === parentId);
                 let untilDateTime = new Date(eventDate);
 
-                // Check if the parent series already has an UNTIL date (meaning it's already a split)
-                const hasExistingUntil = baseEvent?.recurrence?.includes('UNTIL=');
+                // We need to find the actual previous occurrence date
+                // This is critical for proper splitting without gaps
 
-                if (hasExistingUntil || isSplitSeries) {
-                  // For already split series, just set UNTIL to just before this specific occurrence
-                  // Don't try to calculate based on frequency as the series might have gaps
-                  untilDateTime.setMinutes(untilDateTime.getMinutes() - 1);
-                } else if (baseEvent?.recurrence) {
-                  // For original series, calculate based on frequency
-                  if (baseEvent.recurrence.includes('FREQ=DAILY')) {
-                    // For daily events, go back 1 day and set to end of that day
+                if (modal.event.isVirtual && modal.event.parentId) {
+                  // For virtual events, we can calculate the previous occurrence precisely
+                  const parentEvent = baseEvents.find(e => e.id === modal.event.parentId);
+                  if (parentEvent?.recurrence) {
+                    if (parentEvent.recurrence.includes('FREQ=DAILY')) {
+                      // For daily events, UNTIL should be end of previous day
+                      untilDateTime.setDate(untilDateTime.getDate() - 1);
+                      untilDateTime.setHours(23, 59, 59, 999);
+                    } else if (parentEvent.recurrence.includes('FREQ=WEEKLY')) {
+                      // For weekly events, UNTIL should be end of day 7 days before
+                      untilDateTime.setDate(untilDateTime.getDate() - 7);
+                      untilDateTime.setHours(23, 59, 59, 999);
+                    } else if (parentEvent.recurrence.includes('FREQ=MONTHLY')) {
+                      // For monthly events, UNTIL should be end of previous month's occurrence
+                      untilDateTime.setMonth(untilDateTime.getMonth() - 1);
+                      untilDateTime.setHours(23, 59, 59, 999);
+                    } else {
+                      // Default: just before this occurrence
+                      untilDateTime.setMinutes(untilDateTime.getMinutes() - 1);
+                    }
+                  } else {
+                    // No recurrence info, use precise cutoff
+                    untilDateTime.setMinutes(untilDateTime.getMinutes() - 1);
+                  }
+                } else if (isSplitSeries) {
+                  // For split series being split again, we need to find the actual previous occurrence
+                  // Look at the modal event's recurrence pattern
+                  if (modal.event.recurrence?.includes('FREQ=DAILY')) {
                     untilDateTime.setDate(untilDateTime.getDate() - 1);
                     untilDateTime.setHours(23, 59, 59, 999);
-                  } else if (baseEvent.recurrence.includes('FREQ=WEEKLY')) {
-                    // For weekly events, go back 7 days and set to end of that day
+                  } else if (modal.event.recurrence?.includes('FREQ=WEEKLY')) {
                     untilDateTime.setDate(untilDateTime.getDate() - 7);
                     untilDateTime.setHours(23, 59, 59, 999);
-                  } else if (baseEvent.recurrence.includes('FREQ=MONTHLY')) {
-                    // For monthly events, go back 1 month and set to end of that day
+                  } else if (modal.event.recurrence?.includes('FREQ=MONTHLY')) {
                     untilDateTime.setMonth(untilDateTime.getMonth() - 1);
                     untilDateTime.setHours(23, 59, 59, 999);
                   } else {
-                    // Default: just before this occurrence
+                    // Use precise cutoff for complex cases
+                    untilDateTime.setMinutes(untilDateTime.getMinutes() - 1);
+                  }
+                } else if (baseEvent?.recurrence) {
+                  // For base events, use the standard calculation
+                  if (baseEvent.recurrence.includes('FREQ=DAILY')) {
+                    untilDateTime.setDate(untilDateTime.getDate() - 1);
+                    untilDateTime.setHours(23, 59, 59, 999);
+                  } else if (baseEvent.recurrence.includes('FREQ=WEEKLY')) {
+                    untilDateTime.setDate(untilDateTime.getDate() - 7);
+                    untilDateTime.setHours(23, 59, 59, 999);
+                  } else if (baseEvent.recurrence.includes('FREQ=MONTHLY')) {
+                    untilDateTime.setMonth(untilDateTime.getMonth() - 1);
+                    untilDateTime.setHours(23, 59, 59, 999);
+                  } else {
                     untilDateTime.setMinutes(untilDateTime.getMinutes() - 1);
                   }
                 } else {
