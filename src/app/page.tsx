@@ -250,13 +250,26 @@ export default function ChronosApp() {
   const handleDeleteEvent = (eventId: string) => {
     console.log('handleDeleteEvent called with ID:', eventId);
 
-    // Delete the event from calendarEvents
-    setCalendarEvents(prev => prev.filter(e => e.id !== eventId));
+    // Mark the event as deleting to trigger the animation
+    setDeletingEventIds(prev => new Set([...prev, eventId]));
 
     // If this was the selected event, close the editor immediately
     if (selectedEvent?.id === eventId) {
       setSelectedEvent(null);
     }
+
+    // Wait for the animation to complete before actually deleting
+    setTimeout(() => {
+      // Delete the event from calendarEvents
+      setCalendarEvents(prev => prev.filter(e => e.id !== eventId));
+
+      // Clean up the deleting state
+      setDeletingEventIds(prev => {
+        const next = new Set(prev);
+        next.delete(eventId);
+        return next;
+      });
+    }, 250); // Match the animation duration in CSS
   };
 
   // Update resize handler for merged separator
