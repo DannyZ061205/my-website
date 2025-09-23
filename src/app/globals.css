@@ -1,0 +1,1241 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar for webkit browsers */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 0; /* Hide horizontal scrollbar */
+}
+
+::-webkit-scrollbar:horizontal {
+  height: 0 !important; /* Specifically hide horizontal scrollbar */
+  display: none !important;
+  width: 0 !important;
+}
+
+/* Hide horizontal scrollbar for calendar */
+.scrollbar-hide::-webkit-scrollbar {
+  width: 6px; /* Keep vertical scrollbar */
+  height: 0 !important; /* Hide horizontal scrollbar */
+}
+
+.scrollbar-hide::-webkit-scrollbar:horizontal {
+  display: none !important;
+  height: 0 !important;
+  width: 0 !important;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+/* Hide horizontal scrollbar in calendar module specifically */
+div[class*="calendar"]::-webkit-scrollbar:horizontal,
+div[class*="Calendar"]::-webkit-scrollbar:horizontal,
+.flex-1::-webkit-scrollbar:horizontal,
+.overflow-y-auto::-webkit-scrollbar:horizontal,
+.calendar-scroll-container::-webkit-scrollbar:horizontal {
+  display: none !important;
+  height: 0 !important;
+  width: 0 !important;
+}
+
+.calendar-scroll-container {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.4);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.6);
+}
+
+/* Animation for fade-in effect */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+/* Delayed fade-in for welcome message */
+@keyframes fade-in-delayed {
+  0% {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-fade-in-delayed {
+  opacity: 0;
+  animation: fade-in-delayed 0.5s ease-out forwards;
+  animation-delay: 1s; /* Wait 1 second before showing */
+}
+
+/* Smooth animations for all elements */
+* {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Glass morphism utilities */
+.glass {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.glass-hover:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* Liquid button animation */
+@keyframes liquid {
+  0%, 100% {
+    border-radius: 12px;
+  }
+  50% {
+    border-radius: 20px;
+  }
+}
+
+.liquid-hover:hover {
+  animation: liquid 0.6s ease-in-out;
+}
+
+/* Focus styles for accessibility */
+.focus-ring:focus {
+  outline: 2px solid rgb(59 130 246);
+  outline-offset: 2px;
+}
+
+/* Selection styling */
+::selection {
+  background: rgba(59, 130, 246, 0.3);
+  color: inherit;
+}
+
+/* Calendar specific styles */
+.bg-blue-25 {
+  background-color: rgba(59, 130, 246, 0.05);
+}
+
+.bg-gray-25 {
+  background-color: rgba(156, 163, 175, 0.05);
+}
+
+/* Improved hover states */
+.hover-lift:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.hover-bounce:hover {
+  animation: bounce-subtle 0.6s ease-in-out;
+}
+
+.hover-wiggle:hover {
+  animation: wiggle 0.5s ease-in-out;
+}
+
+.hover-glow:hover {
+  animation: pulse-glow 1.5s infinite;
+}
+
+.celebrate {
+  animation: celebration 0.6s ease-in-out;
+}
+
+.float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.sparkle {
+  animation: sparkle 1.2s ease-in-out;
+}
+
+/* Delightful button states */
+.btn-playful {
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.btn-playful:hover {
+  transform: scale(1.05) translateY(-1px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+.btn-playful:active {
+  transform: scale(0.98) translateY(0px);
+  transition: all 0.1s ease;
+}
+
+/* Empty state animations */
+@keyframes gentle-sway {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(2deg);
+  }
+}
+
+.gentle-sway {
+  animation: gentle-sway 4s ease-in-out infinite;
+}
+
+/* Loading states */
+@keyframes loading-dots {
+  0%, 80%, 100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+.loading-dot {
+  animation: loading-dots 1.4s infinite ease-in-out;
+}
+
+.loading-dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.loading-dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+/* Confetti animation */
+@keyframes confettiFall {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+/* Success feedback */
+@keyframes success-check {
+  0% {
+    stroke-dashoffset: 24;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.success-check {
+  stroke-dasharray: 24;
+  animation: success-check 0.6s ease-in-out;
+}
+
+/* Confetti particles */
+.confetti-particle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  animation: confetti 3s ease-out forwards;
+  pointer-events: none;
+}
+
+.confetti-particle:nth-child(odd) {
+  border-radius: 0;
+}
+
+/* Text shimmer effect */
+@keyframes shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+
+.text-shimmer {
+  background: linear-gradient(
+    90deg,
+    #374151 25%,
+    #9ca3af 50%,
+    #374151 75%
+  );
+  background-size: 200px 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 2s infinite linear;
+}
+
+/* Smooth transitions for todo items */
+.todo-item {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.todo-item:hover {
+  background-color: rgba(248, 250, 252, 0.8);
+  transform: translateX(2px);
+}
+
+/* Right panel content transition animations */
+@keyframes content-slide-in-right {
+  0% {
+    opacity: 0;
+    transform: translateX(30px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes content-slide-out-left {
+  0% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-30px) scale(0.95);
+  }
+}
+
+.right-content-transition-enter {
+  animation: content-slide-in-right 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.right-content-transition-exit {
+  animation: content-slide-out-left 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Full-screen editor animations */
+@keyframes float-in {
+  0% {
+    opacity: 0;
+    transform: translateZ(50px) scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: translateZ(50px) scale(1);
+  }
+}
+
+.animate-float-in {
+  animation: float-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Chat bubble animations */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Whimsical micro-interactions */
+@keyframes bounce-subtle {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes wiggle {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(1deg);
+  }
+  75% {
+    transform: rotate(-1deg);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(59, 130, 246, 0);
+  }
+}
+
+@keyframes celebration {
+  0% {
+    transform: scale(1) rotate(0deg);
+  }
+  25% {
+    transform: scale(1.1) rotate(5deg);
+  }
+  50% {
+    transform: scale(1.2) rotate(-3deg);
+  }
+  75% {
+    transform: scale(1.1) rotate(2deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes sparkle {
+  0%, 100% {
+    opacity: 0;
+    transform: scale(0);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes confetti {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100px) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+.message-bubble {
+  animation: slideIn 0.3s ease-out;
+}
+
+/* Markdown styles for event descriptions */
+.markdown-content {
+  color: #374151;
+  line-height: 1.6;
+}
+
+.markdown-content h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+  color: #1f2937;
+}
+
+.markdown-content h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #1f2937;
+}
+
+.markdown-content h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #1f2937;
+}
+
+.markdown-content p {
+  margin-bottom: 0.75rem;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  margin-left: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.markdown-content ul {
+  list-style-type: disc;
+}
+
+.markdown-content ol {
+  list-style-type: decimal;
+}
+
+.markdown-content li {
+  margin-bottom: 0.25rem;
+}
+
+.markdown-content strong {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.markdown-content em {
+  font-style: italic;
+}
+
+.markdown-content code {
+  background-color: #dbeafe;
+  color: #1e40af;
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  font-family: monospace;
+}
+
+.markdown-content pre {
+  background-color: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  padding: 1rem;
+  overflow-x: auto;
+  margin-bottom: 0.75rem;
+}
+
+.markdown-content pre code {
+  background-color: transparent;
+  padding: 0;
+  color: inherit;
+}
+
+.markdown-content blockquote {
+  border-left: 4px solid #d1d5db;
+  padding-left: 1rem;
+  font-style: italic;
+  color: #6b7280;
+  margin-bottom: 0.75rem;
+}
+
+.markdown-content a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.markdown-content a:hover {
+  color: #1d4ed8;
+}
+
+.markdown-content hr {
+  border-top: 1px solid #d1d5db;
+  margin: 1rem 0;
+}
+
+/* Draggable separator styles */
+.separator-dragging {
+  user-select: none;
+  cursor: row-resize !important;
+}
+
+.separator-dragging * {
+  pointer-events: none;
+}
+
+/* Selected event - no animation, just subtle highlighting */
+.event-selected {
+  /* No animation - events should not pulse or change color when selected */
+}
+
+/* Calendar specific delightful animations */
+@keyframes event-pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.8) rotate(-2deg);
+  }
+  50% {
+    transform: scale(1.05) rotate(1deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes event-pop-out {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.8) rotate(3deg);
+  }
+}
+
+@keyframes time-indicator-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+  }
+}
+
+@keyframes context-menu-bounce {
+  0% {
+    opacity: 0;
+    transform: scale(0.8) translateY(5px);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.05) translateY(-2px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes picker-slide-in {
+  0% {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes save-success {
+  0% {
+    background-color: transparent;
+  }
+  50% {
+    background-color: rgba(34, 197, 94, 0.1);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+@keyframes recurring-sparkle {
+  0%, 100% {
+    opacity: 0;
+    transform: scale(0) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1) rotate(180deg);
+  }
+}
+
+@keyframes empty-state-float {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  33% {
+    transform: translateY(-3px) rotate(1deg);
+  }
+  66% {
+    transform: translateY(-1px) rotate(-1deg);
+  }
+}
+
+@keyframes month-view-appear {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.95);
+    filter: blur(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes button-press {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.95);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes today-highlight {
+  0%, 100% {
+    background-color: rgba(59, 130, 246, 0.05);
+  }
+  50% {
+    background-color: rgba(59, 130, 246, 0.1);
+  }
+}
+
+/* Event interaction classes */
+.event-pop-in {
+  animation: event-pop-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.event-pop-out {
+  animation: event-pop-out 0.3s cubic-bezier(0.55, 0.055, 0.675, 0.19);
+}
+
+/* Smooth deletion animation for empty events */
+@keyframes event-dissolve {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+.event-dissolving {
+  animation: event-dissolve 0.25s cubic-bezier(0.4, 0, 1, 1) forwards;
+  pointer-events: none;
+  will-change: opacity, transform;
+}
+
+/* Smooth appearing animation for paste and undo */
+@keyframes event-appearing {
+  0% {
+    opacity: 0;
+    transform: scale(0.85) translateY(-4px);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.03) translateY(0);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes event-sliding-left {
+  0% {
+    opacity: 0.5;
+    transform: translateX(100px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes event-sliding-right {
+  0% {
+    opacity: 0.5;
+    transform: translateX(-100px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes diagonal-move {
+  0% {
+    opacity: 0.5;
+    transform: translate(var(--move-delta-x, 0), var(--move-delta-y, 0));
+  }
+  100% {
+    opacity: 1;
+    transform: translate(0, 0);
+  }
+}
+
+.event-appearing {
+  animation: event-appearing 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  will-change: opacity, transform;
+}
+
+.event-sliding-left {
+  animation: event-sliding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity, transform;
+}
+
+.event-sliding-right {
+  animation: event-sliding-right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity, transform;
+}
+
+.time-indicator-pulse {
+  animation: time-indicator-pulse 2s infinite;
+}
+
+.context-menu-bounce {
+  animation: context-menu-bounce 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.picker-slide-in {
+  animation: picker-slide-in 0.2s ease-out;
+}
+
+.save-success {
+  animation: save-success 0.8s ease-out;
+}
+
+.recurring-sparkle {
+  animation: recurring-sparkle 1.5s ease-in-out;
+}
+
+.empty-state-float {
+  animation: empty-state-float 4s ease-in-out infinite;
+}
+
+.month-view-appear {
+  animation: month-view-appear 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.button-press:active {
+  animation: button-press 0.1s ease-out;
+}
+
+.today-highlight {
+  animation: today-highlight 3s ease-in-out;
+}
+
+/* Enhanced hover states for calendar elements */
+.calendar-day:hover {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.05), rgba(59, 130, 246, 0.1));
+  transition: all 0.2s ease;
+}
+
+.time-slot:hover {
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.02), rgba(59, 130, 246, 0.05));
+  transition: all 0.2s ease;
+}
+
+.event-handle:hover {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(4px);
+  border-radius: 2px;
+  transition: all 0.2s ease;
+}
+
+/* Event creation feedback */
+.event-creating {
+  background: linear-gradient(45deg,
+    rgba(59, 130, 246, 0.1),
+    rgba(59, 130, 246, 0.2),
+    rgba(59, 130, 246, 0.1));
+  background-size: 200% 200%;
+  animation: gradient-shift 1.5s ease infinite;
+  border: 2px dashed rgba(59, 130, 246, 0.5);
+  border-radius: 8px;
+}
+
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Navigation button enhancements */
+.nav-button {
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.nav-button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: rgba(59, 130, 246, 0.1);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.3s ease, height 0.3s ease;
+}
+
+.nav-button:hover::before {
+  width: 100px;
+  height: 100px;
+}
+
+.nav-button:hover {
+  transform: scale(1.1) translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+}
+
+/* Empty state styling */
+.empty-state {
+  background: linear-gradient(135deg,
+    rgba(59, 130, 246, 0.05),
+    rgba(147, 51, 234, 0.05));
+  border: 2px dashed rgba(156, 163, 175, 0.3);
+  border-radius: 16px;
+  backdrop-filter: blur(10px);
+}
+
+/* Calendar scroll optimizations */
+.calendar-scroll-sync {
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+
+/* Horizontal scrollbar styling */
+.calendar-scrollable::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+
+.calendar-scrollable::-webkit-scrollbar-track {
+  background: rgba(59, 130, 246, 0.05);
+  border-radius: 5px;
+}
+
+.calendar-scrollable::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.4);
+  border-radius: 5px;
+}
+
+.calendar-scrollable::-webkit-scrollbar-thumb:hover {
+  background: rgba(59, 130, 246, 0.6);
+}
+
+.calendar-scrollable::-webkit-scrollbar-corner {
+  background: rgba(59, 130, 246, 0.05);
+}
+
+/* Settings panel animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.animate-scaleIn {
+  animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Search bar shimmer effect */
+@keyframes searchShimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+.search-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(59, 130, 246, 0.1) 0%,
+    rgba(59, 130, 246, 0.4) 25%,
+    rgba(147, 197, 253, 0.6) 50%,
+    rgba(59, 130, 246, 0.4) 75%,
+    rgba(59, 130, 246, 0.1) 100%
+  );
+  background-size: 200% 100%;
+  animation: searchShimmer 3s ease-in-out infinite;
+}
+
+/* Event Editor Transitions */
+@keyframes slideInFromRight {
+  0% {
+    transform: translateX(20px) scale(0.98);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInFromLeft {
+  0% {
+    transform: translateX(-20px) scale(0.98);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInFromTop {
+  0% {
+    transform: translateY(-20px) scale(0.98);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInFromBottom {
+  0% {
+    transform: translateY(20px) scale(0.98);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes zoomFadeIn {
+  0% {
+    transform: scale(0.9) translateZ(-50px);
+    opacity: 0;
+    filter: blur(4px);
+  }
+  50% {
+    filter: blur(2px);
+  }
+  100% {
+    transform: scale(1) translateZ(0);
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+@keyframes contentShimmer {
+  0% {
+    opacity: 0.6;
+    transform: translateY(2px);
+  }
+  50% {
+    opacity: 0.8;
+    transform: translateY(-1px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.event-editor-slide-right {
+  animation: slideInFromRight 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+.event-editor-slide-left {
+  animation: slideInFromLeft 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+.event-editor-slide-up {
+  animation: slideInFromTop 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+.event-editor-slide-down {
+  animation: slideInFromBottom 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+.event-editor-zoom {
+  animation: zoomFadeIn 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+.event-content-shimmer {
+  animation: contentShimmer 0.4s ease-out;
+}
+
+/* Enhanced Event Selection */
+.event-selection-glow {
+  box-shadow:
+    0 0 0 2px rgba(59, 130, 246, 0.3),
+    0 0 20px rgba(59, 130, 246, 0.2),
+    0 4px 16px rgba(59, 130, 246, 0.15);
+  transition: box-shadow 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* Keyboard navigation indicator */
+@keyframes keyboardNavIndicator {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.keyboard-nav-active {
+  animation: keyboardNavIndicator 0.5s ease-out;
+}
+
+/* Disable transitions during prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Prevent text selection during dragging */
+.no-select {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Minimal Separator Styles */
+.separator-handle {
+  position: relative;
+  width: 1px;
+  background: rgba(0, 0, 0, 0.08);
+  transition: all 0.2s ease;
+}
+
+.separator-handle:hover {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.separator-handle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 4px;
+  height: 32px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 2px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.separator-handle:hover::before {
+  opacity: 1;
+}
+
+.separator-active {
+  background: linear-gradient(to bottom, #3b82f6, #60a5fa, #3b82f6);
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.3);
+}
+
+/* Subtle grip dots animation */
+@keyframes gripFade {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.grip-dots {
+  animation: gripFade 0.2s ease-out;
+}

@@ -1,0 +1,467 @@
+# **Chronos — Product & Implementation Brief (AI-Ready)**
+
+## **0) Context & Goal**
+
+**Company:** Chronos
+
+**Framework:** Next.js
+
+**Audience for this brief:** A senior UI designer + a senior full-stack engineer (and/or AI agent) implementing the MVP.
+
+**Primary input:** A PDF (page & feature designs). **Use it as ground truth.** If a change clearly improves UX or feasibility, **apply it and document what you changed**.
+
+**Vision:** Turn long-term goals into realistic, scheduled actions on a single screen—combining a prioritized To-Do list, a week calendar, and a smart chat assistant that understands natural language and plans with the user’s time/energy constraints.
+
+---
+
+## **1) Problem Statement**
+
+Users juggle multiple tools (to-do, calendar, notes) and repetitive clicks. Translating long-term goals into daily actions is hard, so plans stall.
+
+Pain points to fix:
+
+1. Double entry: users write tasks in to-do apps, then again in calendars.
+2. Unclear path: users don’t know step-by-step sequences to reach long-term goals.
+3. Overcommitment: users set unrealistic plans for limited time/energy and abandon them.
+
+---
+
+## **2) Solution Overview**
+
+A **single-page planning surface** with three modules:
+
+- **Left:** To-Do List (Today / Later), urgency-aware, frictionless capture & editing.
+- **Center:** **Week** Calendar (fixed **Mon→Sun**), drag to schedule, month picker, multiple time zones.
+- **Right:** Chat Assistant that:
+    - Parses natural language into tasks/events.
+    - Distinguishes **Event** (one-off) vs **Long-Term Goal** (repeating/recurring plan).
+    - Builds expert plans (Pro uses advanced model; Free uses basic model).
+    - Confirms before syncing to To-Do + Calendar.
+
+> Inspiration: keep the best interaction patterns from Notion Calendar & Google Calendar—
+> 
+> 
+> **then improve**
+> 
+
+---
+
+## **3) Terminology & Data Primitives**
+
+- **Task:** An item in To-Do. May be unscheduled (Later) or scheduled (mapped to a calendar **Event**). Attributes: id, name, urgency (red|orange|green), description?, timeframe?, date?, status (open|done).
+- **Event (Session):** A scheduled block on the calendar (one-off or an instance of a recurrence). Attributes: id, taskId?, title, start, end, timezone, description?, urgency?.
+- **Goal (Long-Term):** A recurring intention with **generated plan** (series/recurrence + session-level guidance). Attributes: id, title, intent, constraints, recurrence rule, sessions[].
+
+> Urgency mapping: red = urgent, orange = moderate (default for long-term), green = not urgent.
+> 
+
+---
+
+## **4) Information Architecture & Layout (Main Page)**
+
+- **Three resizable columns:**
+    - **Left (To-Do):** Title row with controls; **Do Today** (top, scrollable) and **Do Later** (bottom, scrollable). A **draggable separator** adjusts the split; can collapse Later entirely.
+    - **Center (Calendar):** Week view (Mon–Sun), hours vertically; top bar with Month/Year title (button), month-picker modal, Today button, timezone rail (left).
+    - **Right (Chat):** Text+audio input at bottom; messages above (like ChatGPT). **Sample prompt carousel** cycles every ~3.5s until first user message.
+
+**Hide/Show modules:** Left/right panes hide via title-bar icons and keyboard shortcuts.
+
+---
+
+## **5) Module Specs & Interaction Details**
+
+### **5.1 To-Do Module (Left)**
+
+**Structure**
+
+- Big title: **Task** (with hide icon). To the right: **Undo / Redo** (< and >).
+- Sections:
+    - **Do Today** (top).
+    - **Do Later** (bottom). Default: show upcoming items **for this year**, sorted by date; long list fades at bottom.
+
+**Adding items**
+
+- Each section has an **Add** button.
+    - **Do Today** fields: **Task name** (required), **timeframe** (required), **urgency** (required), **description** (optional).
+    - **Do Later** adds **date** (required) to the same set. Date picked via a **floating month picker** (match Calendar’s look).
+
+**List & hover behavior**
+
+- Each row: **checkbox** (rounded corners; hover fills), **task name**, **urgency pill/emoji** (red/orange/green).
+- Sort order within each section: red → orange → green.
+- Hovering a row:
+    - Row highlights (e.g., subtle gray or elevation).
+    - **Urgency indicator hides**; a **three-dot menu** appears on the far right.
+    - Tooltip on the three dots: **“Edit, Delete”**.
+
+**Editing & delete**
+
+- Clicking three dots opens an **inline floating editor** beneath the row (clear 3D/elevation, shadow).
+    - Fields vertically: **Task name (text)** → **Timeframe (start/end inputs)** → **Urgency (slider red→green)** → **Description (textarea)**.
+    - Smooth **open/close** animation.
+- Delete animates out (e.g., dissolve/slide).
+
+**Completion**
+
+- Clicking the checkbox:
+    - Shows a checkmark, background changes (e.g., subtle blue/green), task name **strikethrough** with a quick “scribble” animation.
+    - Task moves to the **bottom** of Do Today (with motion).
+
+**Progress**
+
+- **Percent complete** indicator beside “Do Today”.
+
+**Scrolling**
+
+- **Sticky** section headers + controls; only the list scrolls within its area.
+
+**Keyboard**
+
+- Support Cmd/Ctrl+Z undo, Cmd/Ctrl+Y redo inside the module.
+
+---
+
+### **5.2 Calendar Module (Center)**
+
+**Scope**
+
+- **Week view only** (Mon→Sun), always fixed in this order.
+- Top-left title shows **Month + Year** (e.g., “September 2025”)—**click opens Month Picker** (floating centered modal).
+    - Month Picker has **up/down arrows** to change months.
+
+**Time zones**
+
+- Left of the grid: Timezone rail.
+    - **+** button to add time zones; right-click on an existing zone to remove.
+
+**Grid**
+
+- Hours vertical; days horizontal. “Today” is visually emphasized (highlight column and/or header).
+- **Today** button (top-right) returns to current week if the user navigated elsewhere.
+
+**Creating/editing**
+
+- Drag vertically to create a session (top→bottom or bottom→top).
+- Clicking a session **opens the same editor** used from To-Do (Task name, Urgency, Description) and allows time edits.
+
+**Consistency**
+
+- Visual language mirrors Notion/Google Calendar **but not pixel copies**—adopt Apple-like rounded radii, light “liquid glass” surfaces.
+
+---
+
+### **5.3 Chat Module (Right)**
+
+**Pre-message state**
+
+- Input supports **text & audio**.
+- A rotating **starter prompt carousel** sits in the message pane (until first user message), changing every ~3.5s with gentle transitions.
+
+**Core logic**
+
+- On submit, classify input as **Event (one-off)** or **Long-Term Goal**.
+
+### **A) Event flow**
+
+- **Model:** Basic (e.g., “ChatGPT 5 Instant”) for all users.
+- If the user provided **Task name, Urgency, Time** (and Date if needed):
+    1. Extract fields explicitly & display a **confirmation card** (task, urgency, time, optional description).
+    2. Show **Confirm / Cancel** buttons (with icons ✔️/✖️); hover: confirm turns green, cancel red.
+    3. On confirm, **sync** to To-Do + Calendar.
+- If information is **incomplete**: ask targeted follow-ups to collect the missing fields, then confirm.
+- If the user includes **extra narrative**:
+    - Extract the required fields, then **summarize the rest** into **Description**, display confirmation, then sync.
+
+### **B) Long-Term Goal flow**
+
+- **Model selection:**
+    - **Pro:** Advanced (e.g., “GPT-5 Thinking with search”)
+    - **Free:** Basic
+- Default urgency: **orange (moderate)**.
+- Flow:
+    1. Ask: “Would you like me to make a plan for you?”
+    2. If **Yes**: act as a **senior coach/expert**; ask follow-ups until sufficient detail:
+        - Current skill level, target outcome, hours/week, preferred days, preferred time of day, any deadlines, constraints.
+    3. Generate a **proposal**: week/day breakdown, **non-identical session descriptions**, realistic durations, ramp-ups/deload weeks if relevant.
+    4. Present plan for **accept / revise / restart**. Iterate quickly.
+    5. On acceptance, create the recurring series and **populate sessions** with meaningful descriptions in Calendar + tasks in To-Do (as needed).
+    6. If **No** to planning: parse the user’s own plan, confirm, then schedule.
+
+**Conflicts & assumptions**
+
+- If times conflict, ask whether to move the **new** or the **existing** item; then **confirm** the resolution.
+- If the user writes “Monday” without “this/next”, assume **this week’s Monday**.
+- If only time is given (no day), assume **today**.
+- Respect user-specified **work blocks** (e.g., Mon–Fri 9:00–16:00) as **no-schedule** windows; ask for alternate slots.
+
+**Additional edge cases to handle**
+
+- Natural language like “this weekend”, “end of month”, “every other day”.
+- Locale time formats (12h vs 24h), **AM/PM ambiguity** (ask if unclear).
+- Sessions spanning **midnight** or crossing time zones (travel).
+- **Daylight Saving Time** shifts (if user adds DST regions).
+- Recurrence edits: **this event only** vs **this and following** vs **entire series**.
+- **Skip/pause/resume** goals; track skipped occurrences.
+- **Duplicate** imports (Google/Apple) → de-dup by UID.
+- **Overdue** tasks → auto-prompt to reschedule or lower scope.
+- Network/offline states → queue actions and reconcile on reconnect.
+- **Undo/Redo** works across modules for the last N structural changes.
+- **Transcript retention:** store chat history for retrieval and future context, with user-visible export/delete.
+
+---
+
+## **6) Onboarding (“First time to website”)**
+
+A centered, step-through modal (with animated **progress dots**; current dot expands). Steps:
+
+1. **Login**
+2. **Short tutorial** (demo core actions)
+3. **Clock type** (12h/24h)
+4. **Country of residence** (searchable list)
+5. **Sleeping time** (blocked scheduling window)
+6. **Eating time** (three default windows: 30m breakfast, 1h lunch, 1h dinner—user can adjust)
+7. **Subscription choice** (Free vs Pro; explain benefits)
+
+---
+
+## **7) Profile Panel (Right-side slide-over)**
+
+**Opens** when clicking the profile picture; occupies a right-hand panel.
+
+- **Clock Type:** 12h vs 24h (show examples: “3:20 AM / 4:50 PM” vs “03:20 / 16:50”).
+- **Language & Country:** Language: **English, Chinese** (initial set). Country: searchable list.
+- **Sleep Schedule:** Slider **12 PM → 12 AM** (15-min increments).
+- **Eating Schedule:**
+    - Breakfast (range: **4:00–11:00**)
+    - Lunch (range: **10:00–16:00**)
+    - Dinner (range: **16:00–23:59**)
+    - Each has **start & end** sliders and an **N/A** toggle.
+- **Keyboard Shortcuts:**
+    - Undo: **Cmd/Ctrl+Z**
+    - Redo: **Cmd/Ctrl+Y**
+    - Copy/Paste: **Cmd/Ctrl+C/V**
+    - Toggle Left: **Cmd/Ctrl+/** (or choose an unambiguous key; < conflicts with many layouts)
+    - Toggle Right: **Cmd/Ctrl+.** (same note—pick accessible keys and show them)
+- **Integrations:** Connect **Google Calendar**, **Apple Calendar** (OAuth + CalDAV/ICS).
+- **Import Calendars:** Upload **.ics** (de-dup by UID, user chooses target calendar).
+- **Download App:** Mac (DMG) — “**Coming this fall**”.
+- **Subscription Management:** Plan, billing, **Cancel anytime** (clearly visible), **apply referral code**.
+
+---
+
+## **8) Subscription & Pricing UX**
+
+**Tiers**
+
+1. **Free**
+    - Core to-do + calendar + event parsing.
+    - **10 prompts/day** in Chat.
+    - Basic model only.
+2. **Pro**
+    - Unlimited prompts.
+    - **Advanced planning models** (deep reasoning + up-to-date knowledge).
+    - Priority scheduling conflict resolution and **goal coaching** templates.
+    - Multi-time-zone planning, smart reschedule suggestions, skip/pause goal flow.
+    - Rich analytics (streaks, weekly time budget vs actual).
+    - Early access to new features.
+    - (expandable “etc.” now concretized above)
+
+**Pricing**
+
+- **Monthly:** **$6/month** (show a subtle strikethrough “$8” tag or “intro price” badge).
+- **Annual:** **$36/year** (effective **$3/month**). Show **“Save 50%”** in green.
+- **Referral code**: additional **30% off** (apply at checkout).
+
+**Trial**
+
+- **30-day free trial** (card required). Auto-renew unless canceled. Clearly show **“Cancel anytime”** and provide a simple flow.
+
+**Payment Methods**
+
+- Bank Card, **Apple Pay**, **Google Pay**, **WeChat Pay**, **Alipay**.
+
+**Persuasion UI**
+
+- Social proof, “what you get” checklist, ROI framing (“hours saved/week”), comparison table, gentle **nudges** in chat when a Pro-only feature is invoked.
+
+---
+
+## **9) Daily Quote Pop-Up**
+
+- One **motivational quote/day** (≥300 quote dataset).
+- All users see the **same quote** per UTC day (deterministic selection; e.g., hash(YYYY-MM-DD) % N).
+- Show **once/day per user**; easy close button; never blocks urgent flows.
+
+---
+
+## **10) Design Language & Accessibility**
+
+- **Minimal, clean, Gen-Z friendly.** Rounded corners (no harsh 90°), subtle depth, **“liquid glass”** cards, gentle motion.
+- Follow **Apple-like** spacing hierarchy; consistent 8-pt grid.
+- Micro-interactions: hover states, drag affordances (thicker separator on hover with double-arrow), smooth dissolves.
+- **Accessibility:** WCAG 2.2 AA; keyboard navigable; ARIA labels; color-contrast for urgency; reduced motion mode.
+
+---
+
+## **11) Non-Functional Requirements**
+
+- **Performance:** Virtualize long lists; avoid layout thrash; prefetch month data.
+- **State:** Next.js App Router; Server Components for data fetching; Client Components for interactive modules; optimistic UI for chat → calendar/To-Do sync.
+- **Storage:** Postgres (Prisma) for core data; Redis for sessions/queues; S3-compatible for uploads.
+- **Realtime:** WebSocket/SSE for cross-pane updates.
+- **Security & Privacy:** OAuth for calendar; least-privilege tokens; encrypt PII at rest; export/delete user data; configurable transcript retention.
+- **I18n/L10n:** English/Chinese copy files; locale time formats.
+- **Analytics:** Track creation rate, completion %, carry-over, plan adherence, churn; privacy-respecting.
+
+---
+
+## **12) API / Schema (suggested, adaptable)**
+
+### **Task (To-Do)**
+
+```
+{
+  "id": "uuid",
+  "name": "string",
+  "urgency": "red|orange|green",
+  "description": "string?",
+  "date": "YYYY-MM-DD?",
+  "timeframe": { "start": "HH:mm?", "end": "HH:mm?" },
+  "status": "open|done",
+  "createdAt": "ISO",
+  "updatedAt": "ISO",
+  "userId": "uuid"
+}
+```
+
+### **Event (Calendar)**
+
+```
+{
+  "id": "uuid",
+  "taskId": "uuid?",
+  "title": "string",
+  "start": "ISO",
+  "end": "ISO",
+  "timezone": "IANA",
+  "description": "string?",
+  "urgency": "red|orange|green?"
+}
+```
+
+### **Goal (Long-Term)**
+
+```
+{
+  "id": "uuid",
+  "title": "string",
+  "defaultUrgency": "orange",
+  "constraints": {
+    "hoursPerWeek": "number?",
+    "preferredDays": ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]?,
+    "preferredTimes": ["morning|evening|night"]?,
+    "noScheduleWindows": [{"start":"ISO","end":"ISO"}]?
+  },
+  "recurrence": "RRULE string",
+  "sessions": [
+    { "eventId": "uuid", "date": "YYYY-MM-DD", "guidance": "string" }
+  ]
+}
+```
+
+---
+
+## **13) Keyboard Shortcuts (global)**
+
+- Undo **Cmd/Ctrl+Z**, Redo **Cmd/Ctrl+Y**
+- Copy/Paste **Cmd/Ctrl+C/V**
+- Toggle Left Pane **Cmd/Ctrl+/** (or another non-ambiguous key)
+- Toggle Right Pane **Cmd/Ctrl+.**
+
+> Validate shortcuts on Windows, macOS, and non-US keyboards; provide a cheat-sheet modal.
+> 
+
+---
+
+## **14) Acceptance Criteria (high level)**
+
+**To-Do**
+
+- Can add/edit/delete in both sections; required fields enforced per section.
+- Sorts by urgency; hover reveals three-dot actions; inline editor shows with elevation.
+- Completion animates and reorders; progress bar updates correctly.
+
+**Calendar**
+
+- Always shows **Mon→Sun**; Today button returns to the current week.
+- Month/Year title opens Month Picker modal; nav arrows work.
+- Dragging creates sessions; clicking opens editor; timezone rail supports add/remove.
+
+**Chat**
+
+- Correctly classifies Event vs Long-Term; handles incomplete info with targeted follow-ups.
+- Confirmation cards render with correct fields; Confirm syncs to both modules.
+- Long-Term plans produce non-identical session descriptions; supports revise/restart; respects user blocks.
+
+**Onboarding & Profile**
+
+- Stepper modal completes; settings persist; import/export works; integrations auth flow succeeds.
+
+**Subscription**
+
+- Trial start/stop is clear; referral code applies correct discount; auto-renew behaves as specified; cancel is discoverable and effective.
+
+**Daily Quote**
+
+- Same quote globally per UTC day; only once/day per user; dismissible.
+
+**A11y & Perf**
+
+- Keyboard navigable; passes contrast checks; list virtualization active on large datasets.
+
+---
+
+## **15) Open Questions / Engineer-Designer Notes**
+
+- Confirm final **keyboard** choices for pane toggles across layouts.
+- Decide local vs UTC for **default scheduling** when no day is specified (assume local).
+- Define **max prompt/day** enforcement for Free in chat UI.
+- Determine **quote dataset** source & curation (must be license-safe).
+- Finalize **referral code** mechanics (stacking rules with annual discounts).
+
+---
+
+## **16) Example Natural Language Inputs (that must “just work”)**
+
+- “10AM–12PM piano class urgent” → Event; confirm; schedule today.
+- “Math HW 6pm–8pm urgent tomorrow” → Event; confirm; schedule tomorrow.
+- “Learn piano” → Long-Term; coach flow; plan & schedule.
+- “Gym Mon Tue Wed 6–8 AM: chest/legs/biceps” → Recurring series with per-day labels.
+- “I moved—pause piano for 2 weeks” → Pause goal, reschedule remainder.
+- “Add Tokyo timezone; meetings should be in my afternoon” → Update tz; bias scheduling.
+
+---
+
+## **17) Copy & Micro-UX Notes**
+
+- Use concise, friendly microcopy.
+- Show **inline toasts** for success/undo.
+- Animations should be **purposeful** (<250ms) and respect “Reduce Motion”.
+
+---
+
+## **18) What to do if Specs vs PDF Conflict**
+
+- Prefer the PDF for specific layout unless it harms usability or feasibility.
+- If you improve something, **implement it** and log a short “change note” with rationale.
+
+---
+
+## **19) Deliverables**
+
+- **Working Next.js app** with the three modules integrated.
+- **Design tokens & component library** (buttons, chips, sliders, cards, modals).
+- **Schema & API routes** for tasks/events/goals; integration shims for Google/Apple.
+- **Telemetry & error reporting** scaffold.
+- **Short README** describing any deltas from this brief + known gaps.
+
