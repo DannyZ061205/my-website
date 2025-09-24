@@ -297,9 +297,9 @@ export const TimePicker: React.FC<TimePickerProps> = ({
               if (onHover) onHover(null);
             }}
             className={`px-2 cursor-pointer ${
-              index === 0 ? 'pt-2 pb-1' :
-              index === array.length - 1 ? 'py-1 pb-2' :
-              'py-1'
+              index === 0 ? 'pt-2' :
+              index === array.length - 1 ? 'pb-2' :
+              ''
             }`}
           >
             <div className={`px-2 py-2 rounded-md transition-colors ${

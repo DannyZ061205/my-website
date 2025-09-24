@@ -81,16 +81,7 @@ export const RepeatPicker: React.FC<RepeatPickerProps> = ({
         if (onHover) onHover(null);
       }}
     >
-      <div className="max-h-64 overflow-y-auto scrollbar-hide">
-        <style jsx>{`
-          .scrollbar-hide::-webkit-scrollbar {
-            display: none;
-          }
-          .scrollbar-hide {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-          }
-        `}</style>
+      <div>
         {repeatOptions.map((option, index, array) => (
           <div
             key={option.value}
@@ -108,12 +99,12 @@ export const RepeatPicker: React.FC<RepeatPickerProps> = ({
               if (onHover) onHover(null);
             }}
             className={`px-2 cursor-pointer ${
-              index === 0 ? 'pt-2 pb-1' :
-              index === array.length - 1 ? 'py-1 pb-2' :
-              'py-1'
+              index === 0 ? 'pt-2' :
+              index === array.length - 1 ? 'pb-2' :
+              ''
             }`}
           >
-            <div className={`flex items-center px-2 py-2 rounded-md transition-colors ${
+            <div className={`flex items-center px-2 py-2.5 rounded-md transition-colors ${
               selectedOption === option.value
                 ? 'bg-blue-50'
                 : 'hover:bg-gray-100'

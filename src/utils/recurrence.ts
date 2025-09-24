@@ -182,9 +182,16 @@ export function getEventsWithVirtual(
   viewStart: Date,
   viewEnd: Date
 ): CalendarEvent[] {
+  // Early return for empty events
+  if (events.length === 0) return [];
+
   const allEvents: CalendarEvent[] = [];
   const processedBaseEvents = new Set<string>();
   const addedEventKeys = new Set<string>();
+
+  // Pre-calculate timestamps for faster comparisons
+  const viewStartTime = viewStart.getTime();
+  const viewEndTime = viewEnd.getTime();
 
   for (const event of events) {
     // Skip virtual events - they should never be used to generate more virtual events
@@ -194,8 +201,8 @@ export function getEventsWithVirtual(
 
     // Add regular events
     if (!event.recurrence || event.recurrence === 'none') {
-      const eventStart = new Date(event.start);
-      if (eventStart >= viewStart && eventStart <= viewEnd) {
+      const eventStartTime = new Date(event.start).getTime();
+      if (eventStartTime >= viewStartTime && eventStartTime <= viewEndTime) {
         if (!addedEventKeys.has(event.id)) {
           allEvents.push(event);
           addedEventKeys.add(event.id);
@@ -208,36 +215,21 @@ export function getEventsWithVirtual(
 
       // Check if the base event should be displayed (not excluded)
       const eventStart = new Date(event.start);
-      if (eventStart >= viewStart && eventStart <= viewEnd) {
+      const eventStartTime = eventStart.getTime();
+      if (eventStartTime >= viewStartTime && eventStartTime <= viewEndTime) {
         // Check if the base event's date is in the excludedDates
-        console.log('recurrence.ts: Checking base event exclusion for:', {
-          eventId: event.id,
-          eventStart: eventStart.toISOString(),
-          excludedDates: event.excludedDates
-        });
 
         const isBaseEventExcluded = event.excludedDates?.some(excluded => {
           const excludedDate = new Date(excluded).toISOString().split('T')[0];
           const baseEventDate = eventStart.toISOString().split('T')[0];
-          const isMatch = excludedDate === baseEventDate;
-          console.log('recurrence.ts: Comparing dates:', {
-            excludedDate,
-            baseEventDate,
-            isMatch
-          });
-          return isMatch;
+          return excludedDate === baseEventDate;
         }) || false;
-
-        console.log('recurrence.ts: Base event excluded?', isBaseEventExcluded);
 
         // Add the base event to results ONLY if it's not excluded
         // If excluded, we skip adding it but still generate virtual events
         if (!addedEventKeys.has(event.id) && !isBaseEventExcluded) {
-          console.log('recurrence.ts: Adding base event to display');
           allEvents.push(event);
           addedEventKeys.add(event.id);
-        } else if (isBaseEventExcluded) {
-          console.log('recurrence.ts: Base event is excluded - not adding to display but will generate virtual events');
         }
       }
 

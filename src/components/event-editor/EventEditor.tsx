@@ -793,6 +793,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                       triggerRef={endTimeRef}
                       value={editedEvent.end}
                       onChange={(time) => updateTimeFromPicker('end', time)}
+                      offsetX={-320}  // Move further left for end time
                       onClose={() => {
                         setEditingField(null);
                         setHoveredEndTime(null);
@@ -978,7 +979,10 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
           >
             <div className="flex items-center gap-3">
               <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a6 6 0 00-2-4l-2-2a6 6 0 00-4-2H7" />
+                <rect x="4" y="4" width="6" height="6" rx="1" strokeWidth="2"/>
+                <rect x="14" y="4" width="6" height="6" rx="1" strokeWidth="2"/>
+                <rect x="4" y="14" width="6" height="6" rx="1" strokeWidth="2"/>
+                <rect x="14" y="14" width="6" height="6" rx="1" strokeWidth="2"/>
               </svg>
               <span className="flex items-center gap-2">
               <span
@@ -1053,12 +1057,12 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                         setHoveredColor(null);
                       }}
                       className={`px-2 cursor-pointer ${
-                        index === 0 ? 'pt-2 pb-1' :
-                        index === array.length - 1 ? 'py-1 pb-2' :
-                        'py-1'
+                        index === 0 ? 'pt-2' :
+                        index === array.length - 1 ? 'pb-2' :
+                        ''
                       }`}
                     >
-                      <div className={`flex items-center px-2 py-2 rounded-md transition-colors ${
+                      <div className={`flex items-center px-2 py-2.5 rounded-md transition-colors ${
                         (editedEvent.color || 'blue') === option.value
                           ? 'bg-blue-50'
                           : 'hover:bg-gray-100'
@@ -1128,34 +1132,49 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && newCategoryInput.trim()) {
                         const newCategory = newCategoryInput.trim();
-                        if (!categories.includes(newCategory)) {
+                        // Check if there's an exact match first (case-insensitive)
+                        const existingCategory = categories.find(cat =>
+                          cat.toLowerCase() === newCategory.toLowerCase()
+                        );
+
+                        if (existingCategory) {
+                          // Use the existing category with its original casing
+                          updateEvent('category', existingCategory);
+                        } else {
+                          // Add as new category
                           const updatedCategories = [...categories, newCategory];
                           setCategories(updatedCategories);
                           localStorage.setItem('eventCategories', JSON.stringify(updatedCategories));
+                          updateEvent('category', newCategory);
                         }
-                        updateEvent('category', newCategory);
                         setNewCategoryInput('');
                         setEditingField(null);
                       }
                     }}
-                    placeholder="Add new category..."
-                    className="w-full px-2 py-1 text-sm text-gray-900 placeholder-gray-500 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    placeholder="Search or add category..."
+                    className="w-full px-2 py-1 text-sm text-gray-900 placeholder-gray-500 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                     autoFocus
                   />
                 </div>
                 {/* Existing categories */}
-                <div className="max-h-64 overflow-y-auto scrollbar-hide">
-                  <style jsx>{`
-                    .scrollbar-hide::-webkit-scrollbar {
-                      display: none;
+                <div>
+                  {/* User categories - filtered by search input */}
+                  {(() => {
+                    const filteredCategories = categories.filter(cat =>
+                      newCategoryInput.trim() === '' ||
+                      cat.toLowerCase().includes(newCategoryInput.toLowerCase())
+                    );
+
+                    if (filteredCategories.length === 0 && newCategoryInput.trim()) {
+                      return (
+                        <div className="px-4 py-3 text-center">
+                          <p className="text-sm text-gray-500">No matching categories</p>
+                          <p className="text-xs text-gray-400 mt-1">Press Enter to create "{newCategoryInput.trim()}"</p>
+                        </div>
+                      );
                     }
-                    .scrollbar-hide {
-                      -ms-overflow-style: none;
-                      scrollbar-width: none;
-                    }
-                  `}</style>
-                  {/* User categories */}
-                  {categories.map((cat, index, array) => (
+
+                    return filteredCategories.map((cat, index, array) => (
                     <div
                       key={cat}
                       onMouseEnter={() => setHoveredCategory(cat)}
@@ -1166,12 +1185,12 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                         setHoveredCategory(null);
                       }}
                       className={`px-2 cursor-pointer ${
-                        index === 0 ? 'pt-2 pb-1' :
-                        index === array.length - 1 ? 'py-1 pb-2' :
-                        'py-1'
+                        index === 0 ? 'pt-2' :
+                        index === array.length - 1 ? 'pb-2' :
+                        ''
                       }`}
                     >
-                      <div className={`flex items-center px-2 py-2 rounded-md transition-colors ${
+                      <div className={`flex items-center px-2 py-2.5 rounded-md transition-colors ${
                         editedEvent.category === cat
                           ? 'bg-blue-50'
                           : 'hover:bg-gray-100'
@@ -1184,7 +1203,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                         )}
                       </div>
                     </div>
-                  ))}
+                  ));
+                  })()}
                 </div>
               </div>
             </div>
@@ -1247,16 +1267,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
               onMouseLeave={() => setHoveredReminder(null)}
             >
               <div className="bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden" style={{ width: '240px' }}>
-                <div className="max-h-64 overflow-y-auto scrollbar-hide">
-                  <style jsx>{`
-                    .scrollbar-hide::-webkit-scrollbar {
-                      display: none;
-                    }
-                    .scrollbar-hide {
-                      -ms-overflow-style: none;
-                      scrollbar-width: none;
-                    }
-                  `}</style>
+                <div>
                   {[
                     { value: 'at-time', label: 'At start of event' },
                     { value: '5min', label: '5 min before' },
@@ -1290,12 +1301,12 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                           setHoveredReminder(null);
                         }}
                         className={`px-2 cursor-pointer ${
-                          index === 0 ? 'pt-2 pb-1' :
-                          index === array.length - 1 ? 'py-1 pb-2' :
-                          'py-1'
+                          index === 0 ? 'pt-2' :
+                          index === array.length - 1 ? 'pb-2' :
+                          ''
                         }`}
                       >
-                        <div className={`flex items-center px-2 py-2 rounded-md transition-colors ${
+                        <div className={`flex items-center px-2 py-2.5 rounded-md transition-colors ${
                           isSelected ? 'bg-blue-50' : 'hover:bg-gray-100'
                         }`}>
                           <span className="text-gray-700 text-sm flex-1">{option.label}</span>
@@ -1384,7 +1395,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                       }}
                       className="px-2 pt-2 pb-1 cursor-pointer"
                     >
-                      <div className={`flex items-center px-2 py-2 rounded-md transition-colors ${
+                      <div className={`flex items-center px-2 py-2.5 rounded-md transition-colors ${
                         (editedEvent.meeting || null) === option.value
                           ? 'bg-blue-50'
                           : 'hover:bg-gray-100'
@@ -1452,12 +1463,12 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                         }
                       }}
                       className={`px-2 cursor-pointer ${
-                        index === 0 ? 'pt-2 pb-1' :
-                        index === array.length - 1 ? 'py-1 pb-2' :
-                        'py-1'
+                        index === 0 ? 'pt-2' :
+                        index === array.length - 1 ? 'pb-2' :
+                        ''
                       }`}
                     >
-                      <div className={`flex items-center px-2 py-2 rounded-md transition-colors ${
+                      <div className={`flex items-center px-2 py-2.5 rounded-md transition-colors ${
                         (editedEvent.meeting || null) === option.value
                           ? 'bg-blue-50'
                           : 'hover:bg-gray-100'

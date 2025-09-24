@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Recurrence Animation Demo</title>
+    <link rel="stylesheet" href="daily-recurrence-animations.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .demo-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .demo-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .demo-title {
+            font-size: 32px;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 8px;
+        }
+
+        .demo-subtitle {
+            font-size: 16px;
+            color: #64748b;
+            font-weight: 400;
+        }
+
+        .animation-section {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 16px;
+        }
+
+        .week-view {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .day-column {
+            text-align: center;
+        }
+
+        .day-header {
+            font-size: 12px;
+            font-weight: 600;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .daily-event-item {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 12px 8px;
+            font-size: 14px;
+            color: #334155;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .control-panel {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .demo-button {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 20px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .demo-button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        .demo-button:active {
+            transform: translateY(0);
+        }
+
+        .demo-button.secondary {
+            background: white;
+            color: #6b7280;
+            border: 1px solid #d1d5db;
+        }
+
+        .demo-button.secondary:hover {
+            background: #f9fafb;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .color-selector {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .color-option {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .color-option.blue { background: linear-gradient(135deg, #dbeafe 0%, #3b82f6 100%); }
+        .color-option.emerald { background: linear-gradient(135deg, #d1fae5 0%, #10b981 100%); }
+        .color-option.purple { background: linear-gradient(135deg, #f3e8ff 0%, #8b5cf6 100%); }
+
+        .color-option.active {
+            border-color: #1e293b;
+            transform: scale(1.1);
+        }
+
+        .animation-selector {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .animation-option {
+            padding: 8px 16px;
+            background: #f1f5f9;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            color: #475569;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .animation-option.active {
+            background: #3b82f6;
+            color: white;
+            border-color: #3b82f6;
+        }
+
+        @media (max-width: 768px) {
+            .week-view {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+
+            .demo-title {
+                font-size: 24px;
+            }
+
+            .control-panel {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .animation-selector {
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <div class="demo-header">
+            <h1 class="demo-title">Daily Recurrence Animations</h1>
+            <p class="demo-subtitle">Professional calendar event animations for daily recurring events</p>
+        </div>
+
+        <div class="animation-section">
+            <h2 class="section-title">Animation Preview</h2>
+
+            <div class="week-view" id="weekView">
+                <div class="day-column">
+                    <div class="day-header">Mon</div>
+                    <div class="daily-event-item daily-event-hidden" data-day="0">
+                        Daily Event
+                    </div>
+                </div>
+                <div class="day-column">
+                    <div class="day-header">Tue</div>
+                    <div class="daily-event-item daily-event-hidden" data-day="1">
+                        Daily Event
+                    </div>
+                </div>
+                <div class="day-column">
+                    <div class="day-header">Wed</div>
+                    <div class="daily-event-item daily-event-hidden" data-day="2">
+                        Daily Event
+                    </div>
+                </div>
+                <div class="day-column">
+                    <div class="day-header">Thu</div>
+                    <div class="daily-event-item daily-event-hidden" data-day="3">
+                        Daily Event
+                    </div>
+                </div>
+                <div class="day-column">
+                    <div class="day-header">Fri</div>
+                    <div class="daily-event-item daily-event-hidden" data-day="4">
+                        Daily Event
+                    </div>
+                </div>
+                <div class="day-column">
+                    <div class="day-header">Sat</div>
+                    <div class="daily-event-item daily-event-hidden" data-day="5">
+                        Daily Event
+                    </div>
+                </div>
+                <div class="day-column">
+                    <div class="day-header">Sun</div>
+                    <div class="daily-event-item daily-event-hidden" data-day="6">
+                        Daily Event
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-panel">
+                <button class="demo-button" id="animateBtn">
+                    Animate Daily Recurrence
+                </button>
+
+                <button class="demo-button secondary" id="resetBtn">
+                    Reset
+                </button>
+
+                <div class="animation-selector">
+                    <div class="animation-option active" data-animation="flow">Flow</div>
+                    <div class="animation-option" data-animation="glow">Glow</div>
+                    <div class="animation-option" data-animation="cascade">Cascade</div>
+                    <div class="animation-option" data-animation="breathe">Breathe</div>
+                </div>
+
+                <div class="color-selector">
+                    <div class="color-option blue active" data-color="blue"></div>
+                    <div class="color-option emerald" data-color="emerald"></div>
+                    <div class="color-option purple" data-color="purple"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="animation-section">
+            <h2 class="section-title">Animation Details</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
+                <div style="padding: 16px; background: #f8fafc; border-radius: 8px;">
+                    <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 8px; color: #334155;">Flow (Recommended)</h3>
+                    <p style="font-size: 14px; color: #64748b;">Elegant slide and fade with gentle scaling. Perfect for most use cases.</p>
+                </div>
+                <div style="padding: 16px; background: #f8fafc; border-radius: 8px;">
+                    <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 8px; color: #334155;">Glow</h3>
+                    <p style="font-size: 14px; color: #64748b;">Premium feel with subtle highlight and shadow effects.</p>
+                </div>
+                <div style="padding: 16px; background: #f8fafc; border-radius: 8px;">
+                    <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 8px; color: #334155;">Cascade</h3>
+                    <p style="font-size: 14px; color: #64748b;">Quick, refined wave effect without harsh blur.</p>
+                </div>
+                <div style="padding: 16px; background: #f8fafc; border-radius: 8px;">
+                    <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 8px; color: #334155;">Breathe</h3>
+                    <p style="font-size: 14px; color: #64748b;">Apple-style gentle breathing animation with longer duration.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="daily-recurrence-controller.js"></script>
+    <script>
+        // Demo implementation
+        let currentAnimation = 'flow';
+        let currentColor = 'blue';
+        let animator = new DailyRecurrenceAnimator({
+            animationType: currentAnimation,
+            accentColor: currentColor
+        });
+
+        // Get elements
+        const animateBtn = document.getElementById('animateBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const eventElements = Array.from(document.querySelectorAll('.daily-event-item'));
+        const animationOptions = document.querySelectorAll('.animation-option');
+        const colorOptions = document.querySelectorAll('.color-option');
+
+        // Animation selection
+        animationOptions.forEach(option => {
+            option.addEventListener('click', () => {
+                animationOptions.forEach(opt => opt.classList.remove('active'));
+                option.classList.add('active');
+                currentAnimation = option.dataset.animation;
+
+                animator = new DailyRecurrenceAnimator({
+                    animationType: currentAnimation,
+                    accentColor: currentColor
+                });
+            });
+        });
+
+        // Color selection
+        colorOptions.forEach(option => {
+            option.addEventListener('click', () => {
+                colorOptions.forEach(opt => opt.classList.remove('active'));
+                option.classList.add('active');
+                currentColor = option.dataset.color;
+
+                animator = new DailyRecurrenceAnimator({
+                    animationType: currentAnimation,
+                    accentColor: currentColor
+                });
+            });
+        });
+
+        // Animate button
+        animateBtn.addEventListener('click', () => {
+            animator.animateDailyRecurrence(eventElements, () => {
+                setTimeout(() => {
+                    animator.showSuccessFeedback(eventElements);
+                }, 200);
+            });
+        });
+
+        // Reset button
+        resetBtn.addEventListener('click', () => {
+            animator.cleanup(eventElements);
+            eventElements.forEach(element => {
+                element.classList.add('daily-event-hidden');
+            });
+        });
+
+        // Auto-demo on load
+        setTimeout(() => {
+            animator.animateDailyRecurrence(eventElements);
+        }, 1000);
+    </script>
+</body>
+</html>

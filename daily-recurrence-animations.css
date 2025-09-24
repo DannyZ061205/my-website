@@ -1,0 +1,216 @@
+/*
+ * Professional Daily Recurrence Animations
+ * Design System for Calendar Event Animations
+ */
+
+/* === OPTION 1: ELEGANT SLIDE & FADE === */
+/* Sophisticated entrance with gentle scaling and smooth opacity */
+@keyframes dailyRecurrenceFlow {
+  0% {
+    opacity: 0;
+    transform: translateX(-12px) translateY(-2px) scale(0.98);
+  }
+  60% {
+    opacity: 0.7;
+    transform: translateX(-2px) translateY(0) scale(1.01);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) translateY(0) scale(1);
+  }
+}
+
+/* === OPTION 2: PREMIUM GLOW REVEAL === */
+/* Subtle highlight that reveals the event with a premium feel */
+@keyframes dailyGlowReveal {
+  0% {
+    opacity: 0;
+    transform: scale(0.96);
+    box-shadow: 0 0 0 rgba(59, 130, 246, 0);
+  }
+  40% {
+    opacity: 0.6;
+    transform: scale(1.02);
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* === OPTION 3: GENTLE WAVE CASCADE === */
+/* Refined wave effect without harsh blur */
+@keyframes dailyCascade {
+  0% {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  50% {
+    opacity: 0.8;
+    transform: translateY(-1px) scale(1.01);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* === OPTION 4: SOPHISTICATED BREATHE === */
+/* Apple-style gentle breathing animation */
+@keyframes dailyBreathe {
+  0% {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  70% {
+    opacity: 0.9;
+    transform: scale(1.03);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* === MAIN ANIMATION CLASSES === */
+
+/* Primary recommendation: Elegant slide & fade */
+.daily-event-appear {
+  animation: dailyRecurrenceFlow 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Premium alternative with glow */
+.daily-event-glow {
+  animation: dailyGlowReveal 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+/* Gentle cascade option */
+.daily-event-cascade {
+  animation: dailyCascade 0.5s cubic-bezier(0.4, 0, 0.6, 1) forwards;
+}
+
+/* Sophisticated breathe */
+.daily-event-breathe {
+  animation: dailyBreathe 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+/* === STAGGERED TIMING SYSTEM === */
+/* Apply these delays for left-to-right flow */
+.daily-event-day-0 { animation-delay: 0ms; }    /* Monday */
+.daily-event-day-1 { animation-delay: 80ms; }   /* Tuesday */
+.daily-event-day-2 { animation-delay: 160ms; }  /* Wednesday */
+.daily-event-day-3 { animation-delay: 240ms; }  /* Thursday */
+.daily-event-day-4 { animation-delay: 320ms; }  /* Friday */
+.daily-event-day-5 { animation-delay: 400ms; }  /* Saturday */
+.daily-event-day-6 { animation-delay: 480ms; }  /* Sunday */
+
+/* === ENHANCED VISUAL STATES === */
+
+/* Initial hidden state for all animations */
+.daily-event-hidden {
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+/* Subtle hover enhancement for animated events */
+.daily-event-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* === COLOR ACCENT SYSTEM === */
+/* Subtle color highlights that can be applied during animation */
+
+.daily-accent-blue {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-left: 3px solid #3b82f6;
+}
+
+.daily-accent-emerald {
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border-left: 3px solid #10b981;
+}
+
+.daily-accent-purple {
+  background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%);
+  border-left: 3px solid #8b5cf6;
+}
+
+/* === MICRO-INTERACTION ENHANCEMENTS === */
+
+/* Subtle pulse for the creating state */
+@keyframes dailyCreating {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+.daily-event-creating {
+  animation: dailyCreating 1.5s ease-in-out infinite;
+}
+
+/* Success confirmation flash */
+@keyframes dailySuccess {
+  0% { background-color: rgba(16, 185, 129, 0); }
+  50% { background-color: rgba(16, 185, 129, 0.1); }
+  100% { background-color: rgba(16, 185, 129, 0); }
+}
+
+.daily-event-success {
+  animation: dailySuccess 0.6s ease-out;
+}
+
+/* === RESPONSIVE CONSIDERATIONS === */
+
+/* Reduced motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .daily-event-appear,
+  .daily-event-glow,
+  .daily-event-cascade,
+  .daily-event-breathe {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .daily-event-day-0,
+  .daily-event-day-1,
+  .daily-event-day-2,
+  .daily-event-day-3,
+  .daily-event-day-4,
+  .daily-event-day-5,
+  .daily-event-day-6 {
+    animation-delay: 0ms;
+  }
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  .daily-event-appear,
+  .daily-event-glow,
+  .daily-event-cascade,
+  .daily-event-breathe {
+    animation-duration: 0.4s;
+  }
+
+  .daily-event-day-0 { animation-delay: 0ms; }
+  .daily-event-day-1 { animation-delay: 60ms; }
+  .daily-event-day-2 { animation-delay: 120ms; }
+  .daily-event-day-3 { animation-delay: 180ms; }
+  .daily-event-day-4 { animation-delay: 240ms; }
+  .daily-event-day-5 { animation-delay: 300ms; }
+  .daily-event-day-6 { animation-delay: 360ms; }
+}
+
+/* === IMPLEMENTATION EXAMPLE === */
+/*
+<div class="daily-event-item daily-event-hidden daily-event-appear daily-event-day-0 daily-accent-blue">
+  Monday Event
+</div>
+<div class="daily-event-item daily-event-hidden daily-event-appear daily-event-day-1 daily-accent-blue">
+  Tuesday Event
+</div>
+<!-- Continue for each day... -->
+*/

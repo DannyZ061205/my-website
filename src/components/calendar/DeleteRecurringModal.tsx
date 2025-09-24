@@ -7,15 +7,15 @@ import { CalendarEvent } from '@/types';
 interface DeleteRecurringModalProps {
   event: CalendarEvent;
   onClose: () => void;
-  onDelete: (option: 'single' | 'following' | 'all') => void;
+  onConfirm: (option: 'single' | 'following' | 'all') => void;
 }
 
 export const DeleteRecurringModal: React.FC<DeleteRecurringModalProps> = ({
   event,
   onClose,
-  onDelete
+  onConfirm
 }) => {
-  console.log('DeleteRecurringModal: Component rendered with:', { event, onClose: !!onClose, onDelete: !!onDelete });
+  console.log('DeleteRecurringModal: Component rendered with:', { event, onClose: !!onClose, onConfirm: !!onConfirm });
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -65,9 +65,9 @@ export const DeleteRecurringModal: React.FC<DeleteRecurringModalProps> = ({
             onClick={(e) => {
               e.stopPropagation();
               console.log('DeleteRecurringModal: Delete single clicked');
-              console.log('DeleteRecurringModal: Calling onDelete with "single"');
-              onDelete('single');
-              console.log('DeleteRecurringModal: onDelete called successfully');
+              console.log('DeleteRecurringModal: Calling onConfirm with "single"');
+              onConfirm('single');
+              console.log('DeleteRecurringModal: onConfirm called successfully');
             }}
             className="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-between group"
           >
@@ -82,9 +82,9 @@ export const DeleteRecurringModal: React.FC<DeleteRecurringModalProps> = ({
             onClick={(e) => {
               e.stopPropagation();
               console.log('DeleteRecurringModal: Delete following clicked');
-              console.log('DeleteRecurringModal: Calling onDelete with "following"');
-              onDelete('following');
-              console.log('DeleteRecurringModal: onDelete called successfully');
+              console.log('DeleteRecurringModal: Calling onConfirm with "following"');
+              onConfirm('following');
+              console.log('DeleteRecurringModal: onConfirm called successfully');
             }}
             className="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-between group"
           >
@@ -99,9 +99,9 @@ export const DeleteRecurringModal: React.FC<DeleteRecurringModalProps> = ({
             onClick={(e) => {
               e.stopPropagation();
               console.log('DeleteRecurringModal: Delete all clicked');
-              console.log('DeleteRecurringModal: Calling onDelete with "all"');
-              onDelete('all');
-              console.log('DeleteRecurringModal: onDelete called successfully');
+              console.log('DeleteRecurringModal: Calling onConfirm with "all"');
+              onConfirm('all');
+              console.log('DeleteRecurringModal: onConfirm called successfully');
             }}
             className="w-full text-left px-4 py-3 rounded-lg hover:bg-red-50 transition-colors flex items-center justify-between group"
           >

@@ -11,6 +11,7 @@ interface PortalTimePickerProps {
   onChange: (time: string) => void;
   onClose: () => void;
   onHover?: (time: string | null) => void;
+  offsetX?: number;
 }
 
 export const PortalTimePicker: React.FC<PortalTimePickerProps> = ({
@@ -19,13 +20,14 @@ export const PortalTimePicker: React.FC<PortalTimePickerProps> = ({
   value,
   onChange,
   onClose,
-  onHover
+  onHover,
+  offsetX = -230
 }) => {
   const { Portal } = usePortalDropdown({
     isOpen,
     onClose,
     triggerRef,
-    offsetX: -230,
+    offsetX: offsetX,
     offsetY: 0
   });
 

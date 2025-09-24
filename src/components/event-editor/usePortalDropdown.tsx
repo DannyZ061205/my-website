@@ -107,15 +107,15 @@ export function usePortalDropdown({
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as Node;
 
-      // Don't handle if clicking on the trigger button - let the button's onClick handle it
-      // This allows the button to toggle the dropdown properly
-      if (triggerRef.current?.contains(target)) {
-        // Don't interfere with the button's own click handler
+      // Don't close if clicking inside the dropdown
+      if (dropdownRef.current?.contains(target)) {
         return;
       }
 
-      // Don't close if clicking inside the dropdown
-      if (dropdownRef.current?.contains(target)) {
+      // Don't handle if clicking on the trigger button - let the button's onClick handle it
+      // This allows the button to toggle the dropdown properly
+      if (triggerRef.current?.contains(target)) {
+        // For trigger clicks, we rely on the button's onClick to toggle
         return;
       }
 
@@ -124,14 +124,14 @@ export function usePortalDropdown({
 
     // Small delay to prevent immediate closing when the dropdown opens
     const timer = setTimeout(() => {
-      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('click', handleClickOutside);
     }, 100);
 
     return () => {
       clearTimeout(timer);
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('click', handleClickOutside);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, triggerRef]);
 
   // Handle escape key
   useEffect(() => {

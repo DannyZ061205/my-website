@@ -606,6 +606,10 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
   const [showSimplifiedHeader, setShowSimplifiedHeader] = useState(false);
   // Track if month name should be abbreviated
   const [showAbbreviatedMonth, setShowAbbreviatedMonth] = useState(false);
+  // Track navigation buttons opacity based on width
+  const [navButtonsOpacity, setNavButtonsOpacity] = useState(1);
+  // Track if weekday names should be abbreviated
+  const [showAbbreviatedWeekdays, setShowAbbreviatedWeekdays] = useState(false);
 
   // Track current time for the time indicator
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -813,6 +817,11 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
     // Prevent text selection during drag
     e.preventDefault();
 
+    // Close the event editor when clicking on blank space
+    if (onCloseEvent) {
+      onCloseEvent();
+    }
+
     // Don't auto-delete any events - let the user decide
     // Empty events should persist until the user explicitly deletes them
 
@@ -837,7 +846,7 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
     // SNAP START TIME DOWN to grid -> fixes the "+15 min" start drift
     const time = snapTime(getTimeFromPosition(e.clientY, dayIndex), 'floor');
     setDragStart({ x: e.clientX, y: e.clientY, time });
-    setIsDragging(true);
+    // Don't set isDragging immediately - wait for mouse movement
     e.preventDefault();
   };
 
@@ -911,7 +920,18 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
         }
       }
     } else if (dragStart && !draggedEvent) {
-      // Creating a new event - only proceed if isDragging is true
+      // Creating a new event
+      // Check if we've moved enough to start dragging
+      const dragDistance = Math.sqrt(
+        Math.pow(e.clientX - dragStart.x, 2) +
+        Math.pow(e.clientY - dragStart.y, 2)
+      );
+
+      // Only start dragging after moving 5 pixels
+      if (dragDistance > 5 && !isDragging) {
+        setIsDragging(true);
+      }
+
       if (!isDragging) return;
 
       const rect = calendarRef.current?.getBoundingClientRect();
@@ -1739,12 +1759,26 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
         setContainerWidth(width);
         // Hide search bar when width is less than 600px
         setIsSearchBarVisible(width >= 600);
-        // Show only today's events when width is less than 400px (single column mode)
-        setShowOnlyTimeColumn(width < 400);
-        // Simplify header when width is less than 350px to prevent button cutoff
-        setShowSimplifiedHeader(width < 350);
+        // Show only today's events when width is less than 250px (single column mode) - reduced from 400px for less sensitivity
+        setShowOnlyTimeColumn(width < 250);
+        // Simplify header when width is less than 200px to prevent button cutoff - reduced from 350px
+        setShowSimplifiedHeader(width < 200);
         // Show abbreviated month when width is less than 450px
         setShowAbbreviatedMonth(width < 135);
+
+        // Show abbreviated weekdays (Mon, Tue, etc -> M, T, etc) when width is less than 300px
+        // But not in single day view (below 250px)
+        setShowAbbreviatedWeekdays(width < 300 && width >= 250);
+
+        // Gradually hide navigation buttons when width is between 500-600px
+        if (width >= 600) {
+          setNavButtonsOpacity(1);
+        } else if (width >= 500) {
+          // Gradual fade from 500px to 600px
+          setNavButtonsOpacity((width - 500) / 100);
+        } else {
+          setNavButtonsOpacity(0);
+        }
       }
     });
 
@@ -1970,7 +2004,7 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
       `}</style>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-blue-200 relative z-10">
-        <div className="flex items-center gap-3" style={{ flex: isSearchBarVisible ? '1' : '0 0 auto' }}>
+        <div className="flex items-center relative">
           <button
             ref={monthButtonRef}
             onClick={() => {
@@ -2001,16 +2035,10 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
           <div
             className="flex items-center gap-1"
             style={{
-              opacity: showSimplifiedHeader || showOnlyToday ? '0' : '1',
-              transform: showSimplifiedHeader || showOnlyToday
-                ? 'scale(0.75) translateX(-8px)'
-                : 'scale(1) translateX(0)',
-              maxWidth: showSimplifiedHeader || showOnlyToday ? '0px' : '80px',
-              marginRight: showSimplifiedHeader || showOnlyToday ? '0' : '4px',
-              overflow: 'hidden',
-              transformOrigin: 'left center',
-              transition: 'opacity 300ms ease-out, transform 300ms ease-out, max-width 300ms ease-out, margin 300ms ease-out',
-              pointerEvents: showSimplifiedHeader || showOnlyToday ? 'none' : 'auto'
+              marginLeft: '10px',
+              opacity: showSimplifiedHeader || showOnlyToday ? 0 : navButtonsOpacity,
+              pointerEvents: navButtonsOpacity < 0.5 ? 'none' : 'auto',
+              transition: 'opacity 300ms ease-out'
             }}
           >
             <button
@@ -2036,29 +2064,31 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
               </svg>
             </button>
           </div>
+        </div>
 
-          {/* Search Bar - Centered rounded rectangle that expands vertically */}
-          <div
-            className="flex justify-center items-center"
-            style={{
-              opacity: isSearchBarVisible ? '1' : '0',
-              transform: isSearchBarVisible
-                ? 'scale(1) translateX(0)'
-                : 'scale(0.9) translateX(10px)',
-              flex: isSearchBarVisible ? '1' : '0',
-              maxWidth: isSearchBarVisible ? '100%' : '0px',
-              transformOrigin: 'center',
-              transition: 'opacity 400ms ease-out, transform 400ms ease-out, flex 400ms ease-out, max-width 400ms ease-out',
-              pointerEvents: isSearchBarVisible ? 'auto' : 'none',
-              visibility: isSearchBarVisible ? 'visible' : 'hidden'
-            }}
-          >
+        {/* Search Bar - Centered between > button and Today button */}
+        <div
+          className="flex justify-center items-center absolute"
+          style={{
+            left: 'calc(50% + 80px)',
+            transform: 'translateX(-50%)',
+            opacity: isSearchBarVisible ? '1' : '0',
+            transition: 'opacity 400ms ease-out',
+            pointerEvents: isSearchBarVisible ? 'auto' : 'none'
+          }}
+        >
             <div
               className="relative w-64 transition-transform duration-300 ease-in-out z-50"
               onMouseEnter={() => setIsSearchHovered(true)}
               onMouseLeave={() => {
-                if (!isSearchFocused && !searchQuery) {
+                if (!searchQuery) {
                   setIsSearchHovered(false);
+                  setIsSearchFocused(false);
+                  // Blur the input to remove focus
+                  const searchInput = document.querySelector('.search-input') as HTMLInputElement;
+                  if (searchInput) {
+                    searchInput.blur();
+                  }
                 }
               }}
             >
@@ -2283,22 +2313,17 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                 </div>
               )}
             </div>
-          </div>
         </div>
 
         <div
           style={{
-            opacity: showSimplifiedHeader || showOnlyToday ? '0' : '1',
-            transform: showSimplifiedHeader || showOnlyToday
-              ? 'scale(0.75) translateX(8px)'
-              : 'scale(1) translateX(0)',
-            maxWidth: showSimplifiedHeader || showOnlyToday ? '0px' : '80px',
-            marginLeft: showSimplifiedHeader || showOnlyToday ? '0' : '4px',
-            overflow: 'visible',
-            transformOrigin: 'right center',
-            transition: 'opacity 300ms ease-out, transform 300ms ease-out, max-width 300ms ease-out, margin 300ms ease-out',
-            pointerEvents: showSimplifiedHeader || showOnlyToday ? 'none' : 'auto',
-            position: 'relative',
+            position: 'absolute',
+            right: '16px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            opacity: showSimplifiedHeader || showOnlyToday ? 0 : navButtonsOpacity,
+            transition: 'opacity 300ms ease-out',
+            pointerEvents: navButtonsOpacity < 0.5 ? 'none' : 'auto',
             zIndex: 10
           }}
         >
@@ -2306,11 +2331,7 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
             data-today-button
             onClick={goToToday}
             disabled={showSimplifiedHeader || showOnlyToday}
-            className="px-3 py-1.5 text-sm font-medium text-blue-600 bg-white border-2 border-blue-500 rounded-lg hover:bg-blue-50 transition-all duration-200 btn-playful button-press whitespace-nowrap relative z-10"
-            style={{
-              position: 'relative',
-              zIndex: 10
-            }}
+            className="px-3 py-1.5 text-sm font-medium text-blue-600 bg-white border-2 border-blue-500 rounded-lg hover:bg-blue-50 transition-all duration-200 btn-playful button-press whitespace-nowrap"
           >
             Today
           </button>
@@ -2334,16 +2355,25 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
               return (
                 <div
                   key={index}
-                  className={`flex-1 p-2 text-center border-r border-blue-100 last:border-r-0 relative transition-all duration-500 ${
+                  className={`flex-1 text-center border-r border-blue-100 last:border-r-0 relative transition-all duration-500 ${
                     isHighlighted ? 'bg-blue-100/50' : ''
                   }`}
+                  style={{
+                    padding: showAbbreviatedWeekdays ? '4px' : '8px'
+                  }}
                 >
-                  <div className={`text-xs font-medium ${isToday ? 'text-blue-600 font-semibold' : 'text-blue-500'}`}>
-                    {weekDays[index]}
+                  <div className={`font-medium ${isToday ? 'text-blue-600 font-semibold' : 'text-blue-500'}`}
+                    style={{
+                      fontSize: '12px'
+                    }}>
+                    {showAbbreviatedWeekdays ? weekDays[index].charAt(0) : weekDays[index]}
                   </div>
-                  <div className={`text-lg transition-all duration-500 ${
+                  <div className={`transition-all duration-500 ${
                     isHighlighted ? 'text-blue-700 scale-105 celebrate font-bold' : isToday ? 'text-blue-700 font-bold' : 'text-blue-900 font-semibold'
-                  }`}>
+                  }`}
+                    style={{
+                      fontSize: '18px'
+                    }}>
                     {date.getDate()}
                   </div>
                 </div>
