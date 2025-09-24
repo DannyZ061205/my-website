@@ -26,10 +26,14 @@ function hasEventBeenModified(event: CalendarEvent): boolean {
 }
 
 function ChronosAppContent() {
+  // Default panel widths
+  const DEFAULT_LEFT_WIDTH = 384; // w-96 = 384px
+  const DEFAULT_RIGHT_WIDTH = 384;
+
   const [showLeftPanel, setShowLeftPanel] = useState(true);
   const [showRightPanel, setShowRightPanel] = useState(true);
-  const [leftPanelWidth, setLeftPanelWidth] = useState(384); // w-96 = 384px
-  const [rightPanelWidth, setRightPanelWidth] = useState(384);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(DEFAULT_LEFT_WIDTH);
+  const [rightPanelWidth, setRightPanelWidth] = useState(DEFAULT_RIGHT_WIDTH);
   const [leftPanelAnimating, setLeftPanelAnimating] = useState(false);
   const [rightPanelAnimating, setRightPanelAnimating] = useState(false);
   const [leftPanelHidden, setLeftPanelHidden] = useState(false);
@@ -151,6 +155,13 @@ function ChronosAppContent() {
   const [rightSeparatorClicked, setRightSeparatorClicked] = useState(false);
   const [isResizingMerged, setIsResizingMerged] = useState(false);
   const [deletingEventIds, setDeletingEventIds] = useState<Set<string>>(new Set());
+
+  // Track double-clicks for restoring to default
+  const lastLeftClickRef = useRef<number>(0);
+  const lastRightClickRef = useRef<number>(0);
+
+  // Track if right panel was auto-opened for an event
+  const [rightPanelAutoOpened, setRightPanelAutoOpened] = useState(false);
 
   // Double-click tracking for separators
   const lastLeftSeparatorClick = useRef<number>(0);
@@ -773,11 +784,28 @@ function ChronosAppContent() {
                       onDelete={(eventId) => {
                         handleDeleteEvent(eventId);
                         setSelectedEvent(null);
+
+                        // If we auto-opened the right panel for this event, close it
+                        if (rightPanelAutoOpened) {
+                          setShowRightPanel(false);
+                          setRightPanelHidden(true);
+                          setRightPanelWidth(0);
+                          setRightPanelAutoOpened(false);
+                        }
                       }}
                       onCancel={() => {
-                        // Don't delete here - let the periodic cleanup handle it
-                        // This avoids race conditions with saves
-                        setSelectedEvent(null);
+                        // If we auto-opened the right panel for this event, close it instantly
+                        if (rightPanelAutoOpened) {
+                          // Instantly hide the panel and clear selection
+                          setShowRightPanel(false);
+                          setRightPanelHidden(true);
+                          setRightPanelWidth(0); // Set width to 0 to match dragged-to-edge state
+                          setRightPanelAutoOpened(false);
+                          setSelectedEvent(null);
+                        } else {
+                          // If panel wasn't auto-opened, just clear the selection normally
+                          setSelectedEvent(null);
+                        }
                       }}
                     />
                   )}
@@ -843,9 +871,20 @@ function ChronosAppContent() {
                     : 'hover:bg-blue-50/30'
                 }`}
                 onMouseDown={(e) => {
+                  e.preventDefault();
+
+                  // Check for double-click
+                  const now = Date.now();
+                  if (now - lastLeftClickRef.current < 300) {
+                    // Double-click detected - restore to default
+                    setLeftPanelWidth(DEFAULT_LEFT_WIDTH);
+                    lastLeftClickRef.current = 0;
+                    return;
+                  }
+                  lastLeftClickRef.current = now;
+
                   setIsResizingLeft(true);
                   setDragStartedAsMerged(false); // Track that drag started from unmerged state
-                  e.preventDefault();
                 }}
                 onClick={handleLeftSeparatorClick}
               />
@@ -867,6 +906,7 @@ function ChronosAppContent() {
                 setShowLeftPanel(true);
                 setLeftPanelHidden(false);
                 setLeftPanelExpanding(true);
+                setLeftPanelWidth(DEFAULT_LEFT_WIDTH); // Restore to default width
                 setTimeout(() => setLeftPanelExpanding(false), 300);
               }}
             >
@@ -903,11 +943,13 @@ function ChronosAppContent() {
                 setSelectedEvent(event);
                 console.log('Setting selectedEvent to:', event);
 
-                if (!showRightPanel) {
+                if (!showRightPanel || rightPanelWidth === 0) {
                   console.log('Right panel was hidden, showing it now');
                   setShowRightPanel(true);
                   setRightPanelHidden(false);
                   setRightPanelExpanding(true);
+                  setRightPanelWidth(DEFAULT_RIGHT_WIDTH); // Restore to default width
+                  setRightPanelAutoOpened(true); // Mark that we auto-opened it
                   setTimeout(() => setRightPanelExpanding(false), 300);
                 } else {
                   console.log('Right panel is already visible');
@@ -938,9 +980,21 @@ function ChronosAppContent() {
                     : 'hover:bg-blue-50/30'
                 }`}
                 onMouseDown={(e) => {
+                  e.preventDefault();
+
+                  // Check for double-click
+                  const now = Date.now();
+                  if (now - lastRightClickRef.current < 300) {
+                    // Double-click detected - restore to default
+                    setRightPanelWidth(DEFAULT_RIGHT_WIDTH);
+                    lastRightClickRef.current = 0;
+                    return;
+                  }
+                  lastRightClickRef.current = now;
+
                   setIsResizingRight(true);
                   setDragStartedAsMerged(false); // Track that drag started from unmerged state
-                  e.preventDefault();
+                  setRightPanelAutoOpened(false); // User manually interacted with it
                 }}
                 onClick={handleRightSeparatorClick}
               />
@@ -955,6 +1009,8 @@ function ChronosAppContent() {
                 setShowRightPanel(true);
                 setRightPanelHidden(false);
                 setRightPanelExpanding(true);
+                setRightPanelWidth(DEFAULT_RIGHT_WIDTH); // Restore to default width
+                setRightPanelAutoOpened(false); // User manually opened it
                 setTimeout(() => setRightPanelExpanding(false), 300);
               }}
             >
@@ -1119,11 +1175,28 @@ function ChronosAppContent() {
                         onDelete={(eventId) => {
                           handleDeleteEvent(eventId);
                           setSelectedEvent(null);
+
+                          // If we auto-opened the right panel for this event, close it
+                          if (rightPanelAutoOpened) {
+                            setShowRightPanel(false);
+                            setRightPanelHidden(true);
+                            setRightPanelWidth(0);
+                            setRightPanelAutoOpened(false);
+                          }
                         }}
                         onCancel={() => {
-                          // Don't delete here - let the periodic cleanup handle it
-                          // This avoids race conditions with saves
-                          setSelectedEvent(null);
+                          // If we auto-opened the right panel for this event, close it instantly
+                          if (rightPanelAutoOpened) {
+                            // Instantly hide the panel and clear selection
+                            setShowRightPanel(false);
+                            setRightPanelHidden(true);
+                            setRightPanelWidth(0); // Set width to 0 to match dragged-to-edge state
+                            setRightPanelAutoOpened(false);
+                            setSelectedEvent(null);
+                          } else {
+                            // If panel wasn't auto-opened, just clear the selection normally
+                            setSelectedEvent(null);
+                          }
                         }}
                       />
                     )}

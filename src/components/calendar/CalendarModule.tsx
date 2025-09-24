@@ -1314,6 +1314,13 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
               onEditEvent(null as any);
             }
           }
+
+          // Call onDeleteEvent for each disappearing event to handle UI cleanup
+          if (onDeleteEvent) {
+            disappearingIds.forEach(id => {
+              onDeleteEvent(id);
+            });
+          }
         }
 
         // Set disappearing state for delete animation
@@ -1368,6 +1375,13 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
           if (onEditEvent) {
             onEditEvent(null as any);
           }
+        }
+
+        // Call onDeleteEvent for each disappearing event to handle UI cleanup
+        if (onDeleteEvent) {
+          disappearingIds.forEach(id => {
+            onDeleteEvent(id);
+          });
         }
       }
 
