@@ -192,7 +192,8 @@ export const TimePicker: React.FC<TimePickerProps> = ({
         const newDate = new Date(value);
         newDate.setHours(hours, minutes, 0, 0);
         onChange(newDate.toISOString());
-        // Don't auto-close - let user click outside to close
+        // Close the dropdown after selection
+        onClose();
       }
     }
   };

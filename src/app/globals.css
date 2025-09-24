@@ -555,6 +555,29 @@ div[class*="Calendar"]::-webkit-scrollbar:horizontal,
   margin-bottom: 0.25rem;
 }
 
+/* Nested list styles for event descriptions */
+.event-description-content ol {
+  list-style-type: decimal;
+  padding-left: 1.25rem;
+}
+
+.event-description-content ol ol {
+  list-style-type: lower-alpha !important;
+  padding-left: 1.25rem;
+  margin-top: 0.25rem;
+}
+
+.event-description-content ul {
+  list-style-type: disc;
+  padding-left: 1.25rem;
+}
+
+.event-description-content ul ul {
+  list-style-type: circle !important;
+  padding-left: 1.25rem;
+  margin-top: 0.25rem;
+}
+
 .markdown-content strong {
   font-weight: 600;
   color: #1f2937;

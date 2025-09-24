@@ -29,6 +29,7 @@ export interface CalendarEvent {
   description?: string;
   urgency?: Urgency;
   category?: string; // User-defined category
+  location?: string; // User-defined location
   reminder?: ReminderOption; // Notification reminder setting (deprecated)
   reminders?: ReminderOption[]; // Multiple notification reminders
   meeting?: string; // 'google-meet' | 'zoom' | null

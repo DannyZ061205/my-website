@@ -36,6 +36,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   const [tempDescription, setTempDescription] = useState('');
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [fullScreenMode, setFullScreenMode] = useState<'editor' | 'preview'>('editor');
+  const [descriptionHistory, setDescriptionHistory] = useState<string[]>([]);
+  const [descriptionHistoryIndex, setDescriptionHistoryIndex] = useState(-1);
   const [mounted, setMounted] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -67,6 +69,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   const descriptionTextareaRef = useRef<HTMLTextAreaElement>(null);
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editedEventRef = useRef<CalendarEvent | null>(null);
+  const historyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Refs for portal dropdown triggers
   const startTimeRef = useRef<HTMLElement>(null!);
@@ -1686,21 +1689,482 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
           <div className="relative w-full flex-1 flex flex-col">
             {isEditingDescription ? (
               <div className="w-full flex-1 flex flex-col">
-                <div className="w-full flex-1 border border-gray-300 rounded-lg overflow-hidden">
+                <div className="w-full flex-1 border border-gray-300 rounded-lg overflow-hidden flex flex-col">
+                  {/* Formatting Toolbar */}
+                  <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-200 bg-gray-50">
+                    {/* Heading buttons */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const textarea = descriptionTextareaRef.current;
+                        if (textarea) {
+                          const start = textarea.selectionStart;
+                          const end = textarea.selectionEnd;
+                          const selectedText = tempDescription.substring(start, end);
+
+                          // Check if we're at the start of a line
+                          const textBeforeCursor = tempDescription.substring(0, start);
+                          const isAtLineStart = start === 0 || textBeforeCursor.endsWith('\n');
+
+                          // Add newline if not at start of line
+                          const prefix = isAtLineStart ? '' : '\n';
+                          const newText = `${prefix}# ${selectedText || 'Heading 1'}`;
+                          const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
+                          setTempDescription(newDescription);
+
+                          setTimeout(() => {
+                            textarea.focus();
+                            const offset = prefix.length + 2;
+                            textarea.setSelectionRange(start + offset, start + offset + (selectedText.length || 9));
+                          }, 0);
+                        }
+                      }}
+                      className="px-2 py-1 text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition-colors"
+                    >
+                      H1
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const textarea = descriptionTextareaRef.current;
+                        if (textarea) {
+                          const start = textarea.selectionStart;
+                          const end = textarea.selectionEnd;
+                          const selectedText = tempDescription.substring(start, end);
+
+                          // Check if we're at the start of a line
+                          const textBeforeCursor = tempDescription.substring(0, start);
+                          const isAtLineStart = start === 0 || textBeforeCursor.endsWith('\n');
+
+                          // Add newline if not at start of line
+                          const prefix = isAtLineStart ? '' : '\n';
+                          const newText = `${prefix}## ${selectedText || 'Heading 2'}`;
+                          const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
+                          setTempDescription(newDescription);
+
+                          setTimeout(() => {
+                            textarea.focus();
+                            const offset = prefix.length + 3;
+                            textarea.setSelectionRange(start + offset, start + offset + (selectedText.length || 9));
+                          }, 0);
+                        }
+                      }}
+                      className="px-2 py-1 text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition-colors"
+                    >
+                      H2
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const textarea = descriptionTextareaRef.current;
+                        if (textarea) {
+                          const start = textarea.selectionStart;
+                          const end = textarea.selectionEnd;
+                          const selectedText = tempDescription.substring(start, end);
+
+                          // Check if we're at the start of a line
+                          const textBeforeCursor = tempDescription.substring(0, start);
+                          const isAtLineStart = start === 0 || textBeforeCursor.endsWith('\n');
+
+                          // Add newline if not at start of line
+                          const prefix = isAtLineStart ? '' : '\n';
+                          const newText = `${prefix}### ${selectedText || 'Heading 3'}`;
+                          const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
+                          setTempDescription(newDescription);
+
+                          setTimeout(() => {
+                            textarea.focus();
+                            const offset = prefix.length + 4;
+                            textarea.setSelectionRange(start + offset, start + offset + (selectedText.length || 9));
+                          }, 0);
+                        }
+                      }}
+                      className="px-2 py-1 text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition-colors"
+                    >
+                      H3
+                    </button>
+
+                    <div className="w-px h-4 bg-gray-300 mx-1" />
+
+                    {/* Text formatting buttons */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const textarea = descriptionTextareaRef.current;
+                        if (textarea) {
+                          const start = textarea.selectionStart;
+                          const end = textarea.selectionEnd;
+                          const selectedText = tempDescription.substring(start, end);
+                          const newText = `**${selectedText || 'bold'}**`;
+                          const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
+                          setTempDescription(newDescription);
+                          setTimeout(() => {
+                            textarea.focus();
+                            textarea.setSelectionRange(start + 2, start + 2 + (selectedText.length || 4));
+                          }, 0);
+                        }
+                      }}
+                      className="px-2 py-1 text-xs font-bold text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition-colors"
+                    >
+                      B
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const textarea = descriptionTextareaRef.current;
+                        if (textarea) {
+                          const start = textarea.selectionStart;
+                          const end = textarea.selectionEnd;
+                          const selectedText = tempDescription.substring(start, end);
+                          const newText = `*${selectedText || 'italic'}*`;
+                          const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
+                          setTempDescription(newDescription);
+                          setTimeout(() => {
+                            textarea.focus();
+                            textarea.setSelectionRange(start + 1, start + 1 + (selectedText.length || 6));
+                          }, 0);
+                        }
+                      }}
+                      className="px-2 py-1 text-xs italic text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition-colors"
+                    >
+                      I
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const textarea = descriptionTextareaRef.current;
+                        if (textarea) {
+                          const start = textarea.selectionStart;
+                          const end = textarea.selectionEnd;
+                          const selectedText = tempDescription.substring(start, end);
+                          const newText = `<u>${selectedText || 'underline'}</u>`;
+                          const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
+                          setTempDescription(newDescription);
+                          setTimeout(() => {
+                            textarea.focus();
+                            textarea.setSelectionRange(start + 3, start + 3 + (selectedText.length || 9));
+                          }, 0);
+                        }
+                      }}
+                      className="px-2 py-1 text-xs underline text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition-colors"
+                    >
+                      U
+                    </button>
+
+                    <div className="w-px h-4 bg-gray-300 mx-1" />
+
+                    {/* List buttons */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const textarea = descriptionTextareaRef.current;
+                        if (textarea) {
+                          const start = textarea.selectionStart;
+                          const end = textarea.selectionEnd;
+                          const selectedText = tempDescription.substring(start, end);
+
+                          // Check if we're at the start of a line
+                          const textBeforeCursor = tempDescription.substring(0, start);
+                          const isAtLineStart = start === 0 || textBeforeCursor.endsWith('\n');
+
+                          // Add newline if not at start of line
+                          const prefix = isAtLineStart ? '' : '\n';
+                          const newText = `${prefix}- ${selectedText || 'List item'}`;
+                          const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
+                          setTempDescription(newDescription);
+
+                          setTimeout(() => {
+                            textarea.focus();
+                            const offset = prefix.length + 2;
+                            textarea.setSelectionRange(start + offset, start + offset + (selectedText.length || 9));
+                          }, 0);
+                        }
+                      }}
+                      className="px-2 py-1 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition-colors"
+                      title="Bullet list"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 6h13M8 12h13m-13 6h13M3 6h.01M3 12h.01M3 18h.01" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const textarea = descriptionTextareaRef.current;
+                        if (textarea) {
+                          const start = textarea.selectionStart;
+                          const end = textarea.selectionEnd;
+                          const selectedText = tempDescription.substring(start, end);
+
+                          // Check if we're at the start of a line
+                          const textBeforeCursor = tempDescription.substring(0, start);
+                          const isAtLineStart = start === 0 || textBeforeCursor.endsWith('\n');
+
+                          // Get current line to check indentation
+                          const lines = textBeforeCursor.split('\n');
+                          const currentLine = lines[lines.length - 1];
+                          const leadingSpaces = currentLine.match(/^(\s*)/)?.[1] || '';
+                          const indentLevel = Math.floor(leadingSpaces.length / 4);
+
+                          // Always use '1. ' for markdown compatibility
+                          let marker = '1. ';
+
+                          // Add newline if not at start of line
+                          const prefix = isAtLineStart ? '' : '\n';
+                          const newText = `${prefix}${leadingSpaces}${marker}${selectedText || 'List item'}`;
+                          const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
+                          setTempDescription(newDescription);
+
+                          setTimeout(() => {
+                            textarea.focus();
+                            const offset = prefix.length + leadingSpaces.length + marker.length;
+                            textarea.setSelectionRange(start + offset, start + offset + (selectedText.length || 9));
+                          }, 0);
+                        }
+                      }}
+                      className="px-2 py-1 text-xs font-bold text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition-colors"
+                      title="Numbered list"
+                    >
+                      #
+                    </button>
+                  </div>
+
+                  {/* Textarea */}
                   <textarea
                     ref={descriptionTextareaRef}
                     value={tempDescription}
-                    onChange={(e) => setTempDescription(e.target.value)}
+                    onChange={(e) => {
+                      const newValue = e.target.value;
+                      setTempDescription(newValue);
+
+                      // Add to history on significant changes (debounced effect)
+                      // Clear any existing timer
+                      if (historyTimerRef.current) {
+                        clearTimeout(historyTimerRef.current);
+                      }
+
+                      // Set new timer to add to history after user stops typing
+                      historyTimerRef.current = setTimeout(() => {
+                        const newHistory = [...descriptionHistory.slice(0, descriptionHistoryIndex + 1), newValue];
+                        // Keep only last 50 states
+                        const trimmedHistory = newHistory.length > 50
+                          ? newHistory.slice(newHistory.length - 50)
+                          : newHistory;
+                        setDescriptionHistory(trimmedHistory);
+                        setDescriptionHistoryIndex(trimmedHistory.length - 1);
+                        historyTimerRef.current = null;
+                      }, 500);
+                    }}
                     onKeyDown={(e) => {
-                      // Check for Cmd+Enter (Mac) or Ctrl+Enter (Windows/Linux)
+                      // Handle Cmd/Ctrl+Z for undo and Cmd/Ctrl+Shift+Z for redo
+                      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+                        e.preventDefault();
+                        if (descriptionHistoryIndex > 0) {
+                          const newIndex = descriptionHistoryIndex - 1;
+                          setDescriptionHistoryIndex(newIndex);
+                          setTempDescription(descriptionHistory[newIndex]);
+                        }
+                        return;
+                      }
+
+                      if ((e.metaKey || e.ctrlKey) && ((e.key === 'z' && e.shiftKey) || e.key === 'y')) {
+                        e.preventDefault();
+                        if (descriptionHistoryIndex < descriptionHistory.length - 1) {
+                          const newIndex = descriptionHistoryIndex + 1;
+                          setDescriptionHistoryIndex(newIndex);
+                          setTempDescription(descriptionHistory[newIndex]);
+                        }
+                        return;
+                      }
+                      // Check for Cmd+Enter (Mac) or Ctrl+Enter (Windows/Linux) to save
                       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
                         e.preventDefault();
                         updateEvent('description', tempDescription);
                         setIsEditingDescription(false);
                         setTempDescription('');
+                        return;
+                      }
+
+                      // Check for Tab key to handle list indentation
+                      if (e.key === 'Tab') {
+                        const textarea = e.currentTarget;
+                        const cursorPos = textarea.selectionStart;
+                        const textBeforeCursor = tempDescription.substring(0, cursorPos);
+                        const textAfterCursor = tempDescription.substring(cursorPos);
+
+                        // Find the current line
+                        const lines = textBeforeCursor.split('\n');
+                        const currentLine = lines[lines.length - 1];
+                        const lineStart = cursorPos - currentLine.length;
+
+                        // Check if current line is a list item
+                        const bulletMatch = currentLine.match(/^(\s*)(-\s+.*)$/);
+                        const numberMatch = currentLine.match(/^(\s*)(\d+)\.\s+(.*)$/);
+
+                        if (bulletMatch) {
+                          e.preventDefault();
+                          const currentIndent = bulletMatch[1];
+                          const listContent = bulletMatch[2];
+
+                          if (e.shiftKey) {
+                            // Shift+Tab: Remove indentation (up to 4 spaces)
+                            const spacesToRemove = Math.min(4, currentIndent.length);
+                            const newIndent = currentIndent.substring(spacesToRemove);
+                            const newLine = newIndent + listContent;
+                            const newText = tempDescription.substring(0, lineStart) + newLine + textAfterCursor;
+                            setTempDescription(newText);
+                            setTimeout(() => {
+                              const newPos = lineStart + newLine.length - listContent.length + 2;
+                              textarea.setSelectionRange(newPos, newPos);
+                            }, 0);
+                          } else {
+                            // Tab: Add indentation (4 spaces)
+                            const newIndent = currentIndent + '    ';
+                            const newLine = newIndent + listContent;
+                            const newText = tempDescription.substring(0, lineStart) + newLine + textAfterCursor;
+                            setTempDescription(newText);
+                            setTimeout(() => {
+                              const newPos = cursorPos + 4;
+                              textarea.setSelectionRange(newPos, newPos);
+                            }, 0);
+                          }
+                          return;
+                        } else if (numberMatch) {
+                          e.preventDefault();
+                          const match = numberMatch;
+                          const currentIndent = match[1];
+                          const marker = match[2];
+                          const content = match[3];
+
+                          if (e.shiftKey) {
+                            // Shift+Tab: Remove indentation and change format
+                            const spacesToRemove = Math.min(4, currentIndent.length);
+                            const newIndent = currentIndent.substring(spacesToRemove);
+                            const newIndentLevel = Math.floor(newIndent.length / 4);
+
+                            // Always use '1' for markdown compatibility
+                            let newMarker = '1';
+
+                            const newLine = newIndent + newMarker + '. ' + content;
+                            const newText = tempDescription.substring(0, lineStart) + newLine + textAfterCursor;
+                            setTempDescription(newText);
+                            setTimeout(() => {
+                              const newPos = lineStart + newIndent.length + newMarker.length + 2;
+                              textarea.setSelectionRange(newPos, newPos);
+                            }, 0);
+                          } else {
+                            // Tab: Add indentation and change format
+                            const newIndent = currentIndent + '    ';
+                            const newIndentLevel = Math.floor(newIndent.length / 4);
+
+                            // For proper markdown, always use numbers
+                            // The CSS will style nested lists as letters
+                            let newMarker = '1';
+
+                            const newLine = newIndent + newMarker + '. ' + content;
+                            const newText = tempDescription.substring(0, lineStart) + newLine + textAfterCursor;
+                            setTempDescription(newText);
+                            setTimeout(() => {
+                              const newPos = lineStart + newIndent.length + newMarker.length + 2;
+                              textarea.setSelectionRange(newPos, newPos);
+                            }, 0);
+                          }
+                          return;
+                        }
+                      }
+
+                      // Check for Backspace key to handle list deletion
+                      if (e.key === 'Backspace') {
+                        const textarea = e.currentTarget;
+                        const cursorPos = textarea.selectionStart;
+                        const textBeforeCursor = tempDescription.substring(0, cursorPos);
+
+                        // Find the current line
+                        const lines = textBeforeCursor.split('\n');
+                        const currentLine = lines[lines.length - 1];
+
+                        // Check if cursor is right after a bullet point or number
+                        if (currentLine.match(/^(\s*)-\s*$/) ||
+                            currentLine.match(/^(\s*)(\d+)\.\s*$/)) {
+                          e.preventDefault();
+                          const lineStart = cursorPos - currentLine.length;
+                          const textAfterCursor = tempDescription.substring(cursorPos);
+                          const newText = tempDescription.substring(0, lineStart) + textAfterCursor;
+                          setTempDescription(newText);
+                          setTimeout(() => {
+                            textarea.setSelectionRange(lineStart, lineStart);
+                          }, 0);
+                          return;
+                        }
+                      }
+
+                      // Check for Enter key to handle list continuation
+                      if (e.key === 'Enter') {
+                        const textarea = e.currentTarget;
+                        const cursorPos = textarea.selectionStart;
+                        const textBeforeCursor = tempDescription.substring(0, cursorPos);
+                        const textAfterCursor = tempDescription.substring(cursorPos);
+
+                        // Find the current line
+                        const lines = textBeforeCursor.split('\n');
+                        const currentLine = lines[lines.length - 1];
+
+                        // Check if current line starts with a bullet point
+                        const bulletMatch = currentLine.match(/^(\s*)-\s+(.*)$/);
+                        // Check if current line starts with a number
+                        const numberMatch = currentLine.match(/^(\s*)(\d+)\.\s+(.*)$/);
+
+                        if (bulletMatch) {
+                          e.preventDefault();
+                          const indent = bulletMatch[1];
+                          const content = bulletMatch[2];
+
+                          // If the line only has "- " (empty item), remove it instead of continuing
+                          if (!content || content.trim() === '') {
+                            const newText = tempDescription.substring(0, cursorPos - currentLine.length) + textAfterCursor;
+                            setTempDescription(newText);
+                            setTimeout(() => {
+                              textarea.setSelectionRange(cursorPos - currentLine.length, cursorPos - currentLine.length);
+                            }, 0);
+                          } else {
+                            // Add new bullet point on next line with same indentation
+                            const newText = textBeforeCursor + '\n' + indent + '- ' + textAfterCursor;
+                            setTempDescription(newText);
+                            setTimeout(() => {
+                              const newPos = textBeforeCursor.length + 1 + indent.length + 2;
+                              textarea.setSelectionRange(newPos, newPos);
+                            }, 0);
+                          }
+                        } else if (numberMatch) {
+                          e.preventDefault();
+                          const indent = numberMatch[1];
+                          const marker = numberMatch[2];
+                          const content = numberMatch[3];
+
+                          // If the line only has marker (empty item), remove it instead of continuing
+                          if (!content || content.trim() === '') {
+                            const newText = tempDescription.substring(0, cursorPos - currentLine.length) + textAfterCursor;
+                            setTempDescription(newText);
+                            setTimeout(() => {
+                              textarea.setSelectionRange(cursorPos - currentLine.length, cursorPos - currentLine.length);
+                            }, 0);
+                          } else {
+                            // Continue with next number
+                            const currentNumber = parseInt(marker);
+                            const nextMarker = (currentNumber + 1) + '. ';
+
+                            // Add new item on next line with appropriate marker
+                            const newText = textBeforeCursor + '\n' + indent + nextMarker + textAfterCursor;
+                            setTempDescription(newText);
+                            setTimeout(() => {
+                              const newPos = textBeforeCursor.length + 1 + indent.length + nextMarker.length;
+                              textarea.setSelectionRange(newPos, newPos);
+                            }, 0);
+                          }
+                        }
                       }
                     }}
-                    className="w-full h-full text-gray-700 bg-transparent px-4 py-3 outline-none focus:ring-0 resize-none text-sm"
+                    className="w-full flex-1 text-gray-700 bg-transparent px-4 py-3 outline-none focus:ring-0 resize-none text-sm"
                     placeholder="Write in markdown..."
                   />
                 </div>
@@ -1741,16 +2205,29 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
               </div>
             ) : (
               <div
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   setIsEditingDescription(true);
-                  setTempDescription(editedEvent.description || '');
+                  const initialDescription = editedEvent.description || '';
+                  setTempDescription(initialDescription);
+                  // Initialize history when starting to edit
+                  setDescriptionHistory([initialDescription]);
+                  setDescriptionHistoryIndex(0);
+                  // Focus the textarea after a short delay to ensure it's rendered
+                  setTimeout(() => {
+                    if (descriptionTextareaRef.current) {
+                      descriptionTextareaRef.current.focus();
+                    }
+                  }, 50);
                 }}
                 className="w-full flex-1 text-gray-700 border border-gray-200 hover:border-gray-300 rounded-lg px-4 py-3 cursor-text transition-all duration-200 overflow-y-auto markdown-content hover:bg-gray-50"
                 tabIndex={-1}
               >
                 {editedEvent.description ? (
-                  <div className="prose prose-sm max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  <div className="prose prose-sm max-w-none event-description-content">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                    >
                       {editedEvent.description}
                     </ReactMarkdown>
                   </div>
@@ -1819,8 +2296,50 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                         {fullScreenMode === 'editor' ? (
                           <textarea
                             value={tempDescription}
-                            onChange={(e) => setTempDescription(e.target.value)}
+                            onChange={(e) => {
+                              const newValue = e.target.value;
+                              setTempDescription(newValue);
+
+                              // Add to history on significant changes (debounced effect)
+                              // Clear any existing timer
+                              if (historyTimerRef.current) {
+                                clearTimeout(historyTimerRef.current);
+                              }
+
+                              // Set new timer to add to history after user stops typing
+                              historyTimerRef.current = setTimeout(() => {
+                                const newHistory = [...descriptionHistory.slice(0, descriptionHistoryIndex + 1), newValue];
+                                // Keep only last 50 states
+                                const trimmedHistory = newHistory.length > 50
+                                  ? newHistory.slice(newHistory.length - 50)
+                                  : newHistory;
+                                setDescriptionHistory(trimmedHistory);
+                                setDescriptionHistoryIndex(trimmedHistory.length - 1);
+                                historyTimerRef.current = null;
+                              }, 500);
+                            }}
                             onKeyDown={(e) => {
+                              // Handle Cmd/Ctrl+Z for undo and Cmd/Ctrl+Shift+Z for redo
+                              if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+                                e.preventDefault();
+                                if (descriptionHistoryIndex > 0) {
+                                  const newIndex = descriptionHistoryIndex - 1;
+                                  setDescriptionHistoryIndex(newIndex);
+                                  setTempDescription(descriptionHistory[newIndex]);
+                                }
+                                return;
+                              }
+
+                              if ((e.metaKey || e.ctrlKey) && ((e.key === 'z' && e.shiftKey) || e.key === 'y')) {
+                                e.preventDefault();
+                                if (descriptionHistoryIndex < descriptionHistory.length - 1) {
+                                  const newIndex = descriptionHistoryIndex + 1;
+                                  setDescriptionHistoryIndex(newIndex);
+                                  setTempDescription(descriptionHistory[newIndex]);
+                                }
+                                return;
+                              }
+
                               // Check for Cmd+Enter (Mac) or Ctrl+Enter (Windows/Linux)
                               if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
                                 e.preventDefault();
@@ -1837,7 +2356,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                           />
                         ) : (
                           <div className="w-full h-full px-4 py-8 overflow-y-auto">
-                            <div className="markdown-content prose prose-xl max-w-none text-gray-800">
+                            <div className="markdown-content prose prose-xl max-w-none text-gray-800 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol_ol]:list-[lower-alpha] [&_ol_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_ul_ul]:list-circle [&_ul_ul]:pl-5">
                               {tempDescription ? (
                                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                   {tempDescription}

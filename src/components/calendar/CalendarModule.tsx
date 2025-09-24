@@ -1302,6 +1302,20 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
         // Find events that are disappearing (were added, now being removed)
         const disappearingIds = [...currentEventIds].filter(id => !prevEventIds.has(id));
 
+        // If a disappearing event is currently selected/focused, clear the selection
+        if (disappearingIds.length > 0) {
+          const isSelectedDisappearing = disappearingIds.some(id => {
+            const event = events.find(e => e.id === id);
+            return event && (focusedEventId === id || selectedEventId === id);
+          });
+          if (isSelectedDisappearing) {
+            setFocusedEventId(null);
+            if (onEditEvent) {
+              onEditEvent(null as any);
+            }
+          }
+        }
+
         // Set disappearing state for delete animation
         if (disappearingIds.length > 0) {
           setInternalDeletingEventIds(new Set(disappearingIds));
@@ -1342,6 +1356,20 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
       const appearingIds = [...newEventIds].filter(id => !currentEventIds.has(id));
       // Find events that are disappearing (were added, now being removed)
       const disappearingIds = [...currentEventIds].filter(id => !newEventIds.has(id));
+
+      // If a disappearing event is currently selected/focused, clear the selection
+      if (disappearingIds.length > 0) {
+        const isSelectedDisappearing = disappearingIds.some(id => {
+          const event = events.find(e => e.id === id);
+          return event && (focusedEventId === id || selectedEventId === id);
+        });
+        if (isSelectedDisappearing) {
+          setFocusedEventId(null);
+          if (onEditEvent) {
+            onEditEvent(null as any);
+          }
+        }
+      }
 
       // Set disappearing state for delete animation
       if (disappearingIds.length > 0) {
