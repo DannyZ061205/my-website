@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { CalendarEvent, EventColor, ReminderOption } from '@/types';
+import { useLiveEvent } from '@/contexts/LiveEventContext';
 import { PortalTimePicker } from './PortalTimePicker';
 import { PortalRepeatPicker } from './PortalRepeatPicker';
 import { PortalDropdown } from './PortalDropdown';
@@ -53,6 +54,9 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   const [hoveredEndTime, setHoveredEndTime] = useState<string | null>(null);
   const [meetingStatus, setMeetingStatus] = useState<'idle' | 'creating' | 'created'>('idle');
   const [meetingLink, setMeetingLink] = useState<string>('');
+
+  // Use the live event context for instant updates
+  const { updateLiveEvent, clearLiveEvent } = useLiveEvent();
   const [meetingCode, setMeetingCode] = useState<string>('');
 
   const editorRef = useRef<HTMLDivElement>(null);
@@ -111,34 +115,6 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
         }, 50);
 
         return () => clearTimeout(timer);
-      } else {
-        // Aggressively prevent any focus for existing events
-        const preventFocus = () => {
-          // Move focus to the parent div to prevent any input from having focus
-          if (editorRef.current) {
-            editorRef.current.focus();
-          }
-          // Then immediately blur to have no focus at all
-          if (document.activeElement && document.activeElement instanceof HTMLElement) {
-            document.activeElement.blur();
-          }
-        };
-
-        // Try multiple times to ensure no auto-focus happens
-        preventFocus();
-        const timer1 = setTimeout(preventFocus, 0);
-        const timer2 = setTimeout(preventFocus, 10);
-        const timer3 = setTimeout(preventFocus, 30);
-        const timer4 = setTimeout(preventFocus, 50);
-        const timer5 = setTimeout(preventFocus, 100);
-
-        return () => {
-          clearTimeout(timer1);
-          clearTimeout(timer2);
-          clearTimeout(timer3);
-          clearTimeout(timer4);
-          clearTimeout(timer5);
-        };
       }
     }
   }, [event?.id, event?.justCreated]); // Trigger on event ID or justCreated change
@@ -388,8 +364,12 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   useEffect(() => {
     return () => {
       if (saveTimeout.current) clearTimeout(saveTimeout.current);
+      // Clear live event data when component unmounts
+      if (editedEvent) {
+        clearLiveEvent(editedEvent.id);
+      }
     };
-  }, []);
+  }, [editedEvent?.id, clearLiveEvent]);
 
   // Set cursor position to end when editing description
   useEffect(() => {
@@ -575,27 +555,26 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
             onChange={(e) => {
               const newTitle = e.target.value;
               setLocalTitle(newTitle);
-              // Update the event immediately for live preview
+              // Update the live context for instant display update
               if (editedEvent) {
+                updateLiveEvent(editedEvent.id, { title: newTitle });
                 const updated = { ...editedEvent, title: newTitle };
                 setEditedEvent(updated);
-                // For new events, don't save on every keystroke to prevent focus loss
-                // Only save for existing events to maintain live preview
-                if (!editedEvent.justCreated) {
-                  // Save immediately for instant visual feedback on existing events
-                  onSave(updated);
-                }
+                editedEventRef.current = updated;
               }
             }}
             onBlur={() => {
-              // For new events, save when losing focus
-              if (editedEvent && editedEvent.justCreated) {
-                const eventToSave = { ...editedEvent };
+              // Save the final state (not a preview)
+              if (editedEventRef.current) {
+                const eventToSave = { ...editedEventRef.current };
                 delete eventToSave.justCreated; // Clear the flag now that user is done
                 onSave(eventToSave);
-                setTitleInputEnabled(false); // Disable input after saving new event
               }
-              // No need for onBlur save for existing events since we're saving on every change
+
+              // Disable input after saving new event
+              if (editedEvent && editedEvent.justCreated) {
+                setTitleInputEnabled(false);
+              }
             }}
             autoFocus={false}
             tabIndex={titleInputEnabled ? 0 : -1}
@@ -987,26 +966,33 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
               <span className="flex items-center gap-2">
               <span
                 className={`inline-block w-4 h-4 rounded-full ${
-                  (hoveredColor || editedEvent.color) === 'purple' ? 'bg-purple-500' :
-                  (hoveredColor || editedEvent.color) === 'green' ? 'bg-green-500' :
+                  (hoveredColor || editedEvent.color) === 'red' ? 'bg-red-500' :
+                  (hoveredColor || editedEvent.color) === 'orange' ? 'bg-orange-500' :
                   (hoveredColor || editedEvent.color) === 'yellow' ? 'bg-yellow-500' :
-                  (hoveredColor || editedEvent.color) === 'pink' ? 'bg-pink-500' :
+                  (hoveredColor || editedEvent.color) === 'green' ? 'bg-green-500' :
+                  (hoveredColor || editedEvent.color) === 'blue' ? 'bg-blue-500' :
+                  (hoveredColor || editedEvent.color) === 'purple' ? 'bg-purple-500' :
                   (hoveredColor || editedEvent.color) === 'gray' ? 'bg-gray-500' :
                   'bg-blue-500'
                 }`}
               ></span>
               <span
                 className={
-                  (hoveredColor || editedEvent.color) === 'purple' ? 'text-purple-600' :
-                  (hoveredColor || editedEvent.color) === 'green' ? 'text-green-600' :
+                  (hoveredColor || editedEvent.color) === 'red' ? 'text-red-600' :
+                  (hoveredColor || editedEvent.color) === 'orange' ? 'text-orange-600' :
                   (hoveredColor || editedEvent.color) === 'yellow' ? 'text-yellow-600' :
-                  (hoveredColor || editedEvent.color) === 'pink' ? 'text-pink-600' :
+                  (hoveredColor || editedEvent.color) === 'green' ? 'text-green-600' :
+                  (hoveredColor || editedEvent.color) === 'blue' ? 'text-blue-600' :
+                  (hoveredColor || editedEvent.color) === 'purple' ? 'text-purple-600' :
                   (hoveredColor || editedEvent.color) === 'gray' ? 'text-gray-600' :
                   'text-blue-600'
                 }
               >
-                {hoveredColor ? hoveredColor.charAt(0).toUpperCase() + hoveredColor.slice(1) :
-                 (editedEvent.color ? editedEvent.color.charAt(0).toUpperCase() + editedEvent.color.slice(1) : 'Blue')}
+                {hoveredColor ?
+                  (hoveredColor === 'gray' ? 'Grey' : hoveredColor.charAt(0).toUpperCase() + hoveredColor.slice(1)) :
+                  (editedEvent.color ?
+                    (editedEvent.color === 'gray' ? 'Grey' : editedEvent.color.charAt(0).toUpperCase() + editedEvent.color.slice(1)) :
+                    'Blue')}
               </span>
               </span>
             </div>
@@ -1034,12 +1020,13 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
               <div className="bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden" style={{ width: '240px' }}>
                 <div>
                   {[
+                    { value: 'red', label: 'Red', bgColor: 'bg-red-500', textColor: 'text-red-600' },
+                    { value: 'orange', label: 'Orange', bgColor: 'bg-orange-500', textColor: 'text-orange-600' },
+                    { value: 'yellow', label: 'Yellow', bgColor: 'bg-yellow-500', textColor: 'text-yellow-600' },
+                    { value: 'green', label: 'Green', bgColor: 'bg-green-500', textColor: 'text-green-600' },
                     { value: 'blue', label: 'Blue', bgColor: 'bg-blue-500', textColor: 'text-blue-600' },
                     { value: 'purple', label: 'Purple', bgColor: 'bg-purple-500', textColor: 'text-purple-600' },
-                    { value: 'green', label: 'Green', bgColor: 'bg-green-500', textColor: 'text-green-600' },
-                    { value: 'yellow', label: 'Yellow', bgColor: 'bg-yellow-500', textColor: 'text-yellow-600' },
-                    { value: 'pink', label: 'Pink', bgColor: 'bg-pink-500', textColor: 'text-pink-600' },
-                    { value: 'gray', label: 'Gray', bgColor: 'bg-gray-500', textColor: 'text-gray-600' },
+                    { value: 'gray', label: 'Grey', bgColor: 'bg-gray-500', textColor: 'text-gray-600' },
                   ].map((option, index, array) => (
                     <div
                       key={option.value}

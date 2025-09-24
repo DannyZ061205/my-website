@@ -7,6 +7,7 @@ import { ChatModule } from '@/components/chat/ChatModule';
 import { EventEditor } from '@/components/event-editor/EventEditor';
 import { SettingsPanel } from '@/components/settings/SettingsPanel';
 import { CalendarEvent } from '@/types';
+import { LiveEventProvider } from '@/contexts/LiveEventContext';
 
 // Helper function to check if an event has been modified from its default state
 function hasEventBeenModified(event: CalendarEvent): boolean {
@@ -24,7 +25,7 @@ function hasEventBeenModified(event: CalendarEvent): boolean {
   );
 }
 
-export default function ChronosApp() {
+function ChronosAppContent() {
   const [showLeftPanel, setShowLeftPanel] = useState(true);
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [leftPanelWidth, setLeftPanelWidth] = useState(384); // w-96 = 384px
@@ -663,6 +664,15 @@ export default function ChronosApp() {
                         const cleanedEvent = { ...updatedEvent };
                         delete cleanedEvent.justCreated;
 
+                        // Handle preview updates immediately without transitions
+                        if (isPreview) {
+                          // Update immediately for zero lag
+                          setCalendarEvents(prev => prev.map(e =>
+                            e.id === cleanedEvent.id ? cleanedEvent : e
+                          ));
+                          return; // Exit early for previews
+                        }
+
                         // Handle recurring event updates based on option
                         if (updateOption === 'single' || updateOption === 'following' || updateOption === 'all') {
                           // For recurring events, we need to handle the update properly
@@ -751,23 +761,8 @@ export default function ChronosApp() {
 
                         // Always update selectedEvent to keep it in sync (removes justCreated flag)
                         if (selectedEvent && selectedEvent.id === cleanedEvent.id) {
-                          if (isPreview) {
-                            // For previews, update color and time properties
-                            const previewEvent = {
-                              ...selectedEvent,
-                              color: cleanedEvent.color,
-                              start: cleanedEvent.start,
-                              end: cleanedEvent.end
-                            };
-                            setSelectedEvent(previewEvent);
-                            // Also update in calendarEvents for immediate visual feedback
-                            setCalendarEvents(prev => prev.map(e =>
-                              e.id === cleanedEvent.id ? previewEvent : e
-                            ));
-                          } else {
-                            // For actual saves, update the entire event (this removes justCreated)
-                            setSelectedEvent(cleanedEvent);
-                          }
+                          // For actual saves, update the entire event (this removes justCreated)
+                          setSelectedEvent(cleanedEvent);
                         }
 
                         const saveEnd = performance.now();
@@ -1179,5 +1174,13 @@ export default function ChronosApp() {
         onClose={() => setShowSettings(false)}
       />
     </div>
+  );
+}
+
+export default function ChronosApp() {
+  return (
+    <LiveEventProvider>
+      <ChronosAppContent />
+    </LiveEventProvider>
   );
 }

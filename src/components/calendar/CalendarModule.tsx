@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { CalendarEvent, EventColor } from '@/types';
 import { EventContextMenu } from './EventContextMenu';
 import { EditRecurringModal } from './EditRecurringModal';
 import { DeleteRecurringModal } from './DeleteRecurringModal';
 import { getEventsWithVirtual } from '@/utils/recurrence';
+import { useLiveEvent } from '@/contexts/LiveEventContext';
 
 interface CalendarModuleProps {
   className?: string;
@@ -41,6 +42,22 @@ interface EventProps {
 }
 
 const eventColors: Record<EventColor, { normal: string; dimmed: string }> = {
+  red: {
+    normal: 'bg-red-500 border-red-600 bg-opacity-100',
+    dimmed: 'bg-red-300 border-red-400 bg-opacity-80'
+  },
+  orange: {
+    normal: 'bg-orange-500 border-orange-600 bg-opacity-100',
+    dimmed: 'bg-orange-300 border-orange-400 bg-opacity-80'
+  },
+  yellow: {
+    normal: 'bg-yellow-500 border-yellow-600 bg-opacity-100',
+    dimmed: 'bg-yellow-300 border-yellow-400 bg-opacity-80'
+  },
+  green: {
+    normal: 'bg-green-500 border-green-600 bg-opacity-100',
+    dimmed: 'bg-green-300 border-green-400 bg-opacity-80'
+  },
   blue: {
     normal: 'bg-blue-500 border-blue-600 bg-opacity-100',
     dimmed: 'bg-blue-300 border-blue-400 bg-opacity-80'
@@ -48,18 +65,6 @@ const eventColors: Record<EventColor, { normal: string; dimmed: string }> = {
   purple: {
     normal: 'bg-purple-500 border-purple-600 bg-opacity-100',
     dimmed: 'bg-purple-300 border-purple-400 bg-opacity-80'
-  },
-  green: {
-    normal: 'bg-green-500 border-green-600 bg-opacity-100',
-    dimmed: 'bg-green-300 border-green-400 bg-opacity-80'
-  },
-  yellow: {
-    normal: 'bg-yellow-500 border-yellow-600 bg-opacity-100',
-    dimmed: 'bg-yellow-300 border-yellow-400 bg-opacity-80'
-  },
-  pink: {
-    normal: 'bg-pink-500 border-pink-600 bg-opacity-100',
-    dimmed: 'bg-pink-300 border-pink-400 bg-opacity-80'
   },
   gray: {
     normal: 'bg-gray-500 border-gray-600 bg-opacity-100',
@@ -99,6 +104,14 @@ const Event: React.FC<EventProps> = ({ event, onSelect, onEdit, onDragStart, onR
   const [, setMouseDownPos] = useState<{ x: number; y: number } | null>(null);
   const [isResizing, setIsResizing] = useState(false);
   const [justCreated, setJustCreated] = useState(false);
+
+  // Use live event context for instant updates
+  const { liveData } = useLiveEvent();
+  const liveEventData = liveData[event.id] || {};
+
+  // Use live data if available, otherwise fall back to event data
+  const displayTitle = liveEventData.title !== undefined ? liveEventData.title : event.title;
+  const displayDescription = liveEventData.description !== undefined ? liveEventData.description : event.description;
 
   // Add entrance animation for new events
   useEffect(() => {
@@ -222,10 +235,12 @@ const Event: React.FC<EventProps> = ({ event, onSelect, onEdit, onDragStart, onR
                         'border-l-4';
 
   // Get the ring color based on event color
-  const ringColor = event.color === 'purple' ? 'ring-purple-400' :
-                    event.color === 'green' ? 'ring-green-400' :
+  const ringColor = event.color === 'red' ? 'ring-red-400' :
+                    event.color === 'orange' ? 'ring-orange-400' :
                     event.color === 'yellow' ? 'ring-yellow-400' :
-                    event.color === 'pink' ? 'ring-pink-400' :
+                    event.color === 'green' ? 'ring-green-400' :
+                    event.color === 'blue' ? 'ring-blue-400' :
+                    event.color === 'purple' ? 'ring-purple-400' :
                     event.color === 'gray' ? 'ring-gray-400' :
                     'ring-blue-400';
 
@@ -266,7 +281,7 @@ const Event: React.FC<EventProps> = ({ event, onSelect, onEdit, onDragStart, onR
       onMouseLeave={() => {
         setIsHovered(false);
       }}
-      title={`${event.title}\n${startTime} - ${endTime}`}
+      title={`${displayTitle}\n${startTime} - ${endTime}`}
     >
       {/* Top resize handle */}
       <div
@@ -284,12 +299,12 @@ const Event: React.FC<EventProps> = ({ event, onSelect, onEdit, onDragStart, onR
                 {event.urgency === 'red' ? '⚠' : event.urgency === 'orange' ? '●' : '○'}
               </span>
             )}
-            <div className="font-semibold truncate pointer-events-none">{event.title}</div>
+            <div className="font-semibold truncate pointer-events-none">{displayTitle}</div>
           </div>
           <div className="text-xs opacity-90 pointer-events-none flex-shrink-0">{startTime} - {endTime}</div>
-          {event.description && (
+          {displayDescription && (
             <div className="text-[10px] opacity-80 mt-1 overflow-hidden">
-              {event.description}
+              {displayDescription}
             </div>
           )}
         </div>
@@ -557,10 +572,23 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
   const [contextMenu, setContextMenu] = useState<{
     event: CalendarEvent;
     position: { x: number; y: number };
+    isClosing?: boolean;
   } | null>(null);
   const [clipboard, setClipboard] = useState<{ event: CalendarEvent; isCut: boolean } | null>(null);
   const [cutEventId, setCutEventId] = useState<string | null>(null);
   const [lastMousePosition, setLastMousePosition] = useState<{ x: number; y: number; dayIndex: number } | null>(null);
+
+  // Function to close context menu with animation
+  const closeContextMenu = useCallback(() => {
+    if (contextMenu && !contextMenu.isClosing) {
+      // Mark as closing to trigger fade-out animation
+      setContextMenu(prev => prev ? { ...prev, isClosing: true } : null);
+      // Remove from DOM after animation completes
+      setTimeout(() => {
+        setContextMenu(null);
+      }, 150); // Match the animation duration
+    }
+  }, [contextMenu]);
 
   // Modal for editing recurring events
   const [editRecurringModal, setEditRecurringModal] = useState<{
@@ -613,9 +641,11 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
 
   // Track current time for the time indicator
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [isClient, setIsClient] = useState(false);
 
   // Update current time every minute
   useEffect(() => {
+    setIsClient(true); // Mark that we're on the client
     const updateTime = () => setCurrentTime(new Date());
     const interval = setInterval(updateTime, 60000); // Update every minute
     return () => clearInterval(interval);
@@ -816,6 +846,11 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
 
     // Prevent text selection during drag
     e.preventDefault();
+
+    // Dismiss context menu when clicking anywhere on the calendar
+    if (contextMenu && !contextMenu.isClosing) {
+      closeContextMenu();
+    }
 
     // Close the event editor when clicking on blank space
     if (onCloseEvent) {
@@ -1155,6 +1190,11 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
     console.log('CalendarModule: onEditEvent exists?', !!onEditEvent);
     console.log('CalendarModule: onEditEvent type:', typeof onEditEvent);
 
+    // Dismiss context menu when selecting another event
+    if (contextMenu && !contextMenu.isClosing) {
+      closeContextMenu();
+    }
+
     // Set focus and open editor on single click
     setFocusedEventId(event.id);
 
@@ -1257,20 +1297,39 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
         const currentEventIds = new Set(events.map(e => e.id));
         const prevEventIds = new Set(prevEvents.map(e => e.id));
 
-        // Only mark as appearing if event was truly deleted (not in current)
+        // Find events that are appearing (were deleted, now being restored)
         const appearingIds = [...prevEventIds].filter(id => !currentEventIds.has(id));
+        // Find events that are disappearing (were added, now being removed)
+        const disappearingIds = [...currentEventIds].filter(id => !prevEventIds.has(id));
 
-        // Set appearing state BEFORE updating events to prevent flicker
-        if (appearingIds.length > 0) {
-          setAppearingEventIds(new Set(appearingIds));
-          // Clear appearing state after animation
+        // Set disappearing state for delete animation
+        if (disappearingIds.length > 0) {
+          setInternalDeletingEventIds(new Set(disappearingIds));
+          // Clear delete animation and update events after animation
           setTimeout(() => {
-            setAppearingEventIds(new Set());
-          }, 350); // Match animation duration
-        }
+            setInternalDeletingEventIds(new Set());
+            const handler = onEventUpdate || onUpdateEvents || setInternalEvents;
+            handler(prevEvents);
 
-        const handler = onEventUpdate || onUpdateEvents || setInternalEvents;
-        handler(prevEvents);
+            // Then handle appearing events if any
+            if (appearingIds.length > 0) {
+              setAppearingEventIds(new Set(appearingIds));
+              setTimeout(() => {
+                setAppearingEventIds(new Set());
+              }, 350);
+            }
+          }, 250); // Match delete animation duration
+        } else {
+          // No disappearing events, just handle appearing ones
+          if (appearingIds.length > 0) {
+            setAppearingEventIds(new Set(appearingIds));
+            setTimeout(() => {
+              setAppearingEventIds(new Set());
+            }, 350);
+          }
+          const handler = onEventUpdate || onUpdateEvents || setInternalEvents;
+          handler(prevEvents);
+        }
       }
     } else if (historyIndex > 0) {
       const newIndex = historyIndex - 1;
@@ -1279,20 +1338,39 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
       const currentEventIds = new Set(events.map(e => e.id));
       const newEventIds = new Set(newEvents.map(e => e.id));
 
-      // Only mark as appearing if event was truly deleted (not in current)
+      // Find events that are appearing (were deleted, now being restored)
       const appearingIds = [...newEventIds].filter(id => !currentEventIds.has(id));
+      // Find events that are disappearing (were added, now being removed)
+      const disappearingIds = [...currentEventIds].filter(id => !newEventIds.has(id));
 
-      // Set appearing state BEFORE updating events to prevent flicker
-      if (appearingIds.length > 0) {
-        setAppearingEventIds(new Set(appearingIds));
-        // Clear appearing state after animation
+      // Set disappearing state for delete animation
+      if (disappearingIds.length > 0) {
+        setInternalDeletingEventIds(new Set(disappearingIds));
+        // Clear delete animation and update events after animation
         setTimeout(() => {
-          setAppearingEventIds(new Set());
-        }, 350); // Match animation duration
-      }
+          setInternalDeletingEventIds(new Set());
+          const handler = onEventUpdate || onUpdateEvents || setInternalEvents;
+          handler(newEvents);
 
-      const handler = onEventUpdate || onUpdateEvents || setInternalEvents;
-      handler(newEvents);
+          // Then handle appearing events if any
+          if (appearingIds.length > 0) {
+            setAppearingEventIds(new Set(appearingIds));
+            setTimeout(() => {
+              setAppearingEventIds(new Set());
+            }, 350);
+          }
+        }, 250); // Match delete animation duration
+      } else {
+        // No disappearing events, just handle appearing ones
+        if (appearingIds.length > 0) {
+          setAppearingEventIds(new Set(appearingIds));
+          setTimeout(() => {
+            setAppearingEventIds(new Set());
+          }, 350);
+        }
+        const handler = onEventUpdate || onUpdateEvents || setInternalEvents;
+        handler(newEvents);
+      }
     }
   };
 
@@ -1394,6 +1472,12 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
     updatedEvents.push(newEvent);
     addToHistory(updatedEvents, baseEvents);
     setFocusedEventId(newEvent.id);
+
+    // Update the parent's selected event to clear the old selection
+    // This ensures only the newly pasted event is selected
+    if (onEditEvent) {
+      onEditEvent(newEvent);
+    }
 
     // Mark event as appearing for animation
     setAppearingEventIds(prev => new Set([...prev, newEvent.id]));
@@ -1795,6 +1879,11 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
       const isMac = navigator.userAgent.toUpperCase().indexOf('MAC') >= 0;
       const cmdKey = isMac ? e.metaKey : e.ctrlKey;
 
+      // Dismiss context menu on any key press (except modifier keys)
+      if (contextMenu && !contextMenu.isClosing && !['Shift', 'Control', 'Alt', 'Meta', 'Command'].includes(e.key)) {
+        closeContextMenu();
+      }
+
       // Check if we're in an input field
       const activeElement = document.activeElement;
       const inInputField = activeElement && (
@@ -1888,36 +1977,34 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
         (focusedEventId ? eventsWithVirtual.find(e => e.id === focusedEventId) : null) ||
         (selectedEventId ? eventsWithVirtual.find(e => e.id === selectedEventId) : null);
 
-      if (!targetEvent) return;
-
-      if (cmdKey && !inInputField) {
+      // Only handle event-specific shortcuts if we have a target event AND we're not in an input field
+      if (targetEvent && cmdKey && !inInputField) {
         // Cut: Cmd/Ctrl + X
         if (e.key === 'x') {
           e.preventDefault();
           handleCut(targetEvent);
-          setContextMenu(null);
+          closeContextMenu();
         }
         // Copy: Cmd/Ctrl + C
         else if (e.key === 'c') {
           e.preventDefault();
           handleCopy(targetEvent);
-          setContextMenu(null);
+          closeContextMenu();
         }
         // Duplicate: Cmd/Ctrl + D
         else if (e.key === 'd') {
           e.preventDefault();
           handleDuplicate(targetEvent);
-          setContextMenu(null);
+          closeContextMenu();
         }
       }
 
-      // Delete key (without modifiers)
-      if (!cmdKey && !e.shiftKey && !e.altKey && !inInputField) {
+      // Delete key (without modifiers) - only if we have a target event
+      if (targetEvent && !cmdKey && !e.shiftKey && !e.altKey && !inInputField) {
         if (e.key === 'Delete' || e.key === 'Backspace') {
           e.preventDefault();
-          if (targetEvent) {
-            // For recurring events, we need to show the delete modal through the editor
-            if (targetEvent.recurrence || targetEvent.recurrenceGroupId) {
+          // For recurring events, we need to show the delete modal through the editor
+          if (targetEvent.recurrence || targetEvent.recurrenceGroupId) {
               // Open the event editor which will handle the delete modal
               if (onEditEvent) {
                 onEditEvent(targetEvent);
@@ -1934,7 +2021,7 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
 
               // Clear focus immediately for better UX
               setFocusedEventId(null);
-              setContextMenu(null);
+              closeContextMenu();
 
               // Always handle deletion through history system for proper undo
               // Wait for animation to complete before actually removing
@@ -1957,25 +2044,6 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
             }
           }
         }
-      }
-
-      if (cmdKey && !inInputField) {
-        // Text formatting shortcuts (for when editing)
-        if (e.key === 'b') {
-          e.preventDefault();
-          console.log('Bold text');
-          // Would apply to event title/description when editing
-        }
-        else if (e.key === 'i') {
-          e.preventDefault();
-          console.log('Italic text');
-        }
-        else if (e.key === 'u') {
-          e.preventDefault();
-          console.log('Underline text');
-        }
-      }
-
     };
 
     // Use capture phase to handle undo/redo before other handlers
@@ -1983,7 +2051,7 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
     return () => {
       document.removeEventListener('keydown', handleKeyDown, true);
     };
-  }, [contextMenu, focusedEventId, baseEvents, weekDates, clipboard, history, historyIndex, cutEventId, getEventsWithVirtual, handleUndo, handleRedo, handlePaste, handleCut, handleCopy, handleDuplicate]);
+  }, [contextMenu, focusedEventId, baseEvents, weekDates, clipboard, history, historyIndex, cutEventId, getEventsWithVirtual, handleUndo, handleRedo, handlePaste, handleCut, handleCopy, handleDuplicate, closeContextMenu]);
 
   return (
     <div className={`h-full bg-white flex flex-col overflow-hidden ${className} ${isDragging || isResizing ? 'select-none' : ''}`}>
@@ -2603,14 +2671,16 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                     style={{ top: `${topPosition}px` }}
                   >
                     {/* Time badge - positioned at the right edge of time column */}
-                    <div className="absolute top-1/2 -translate-y-1/2 bg-red-500 text-white px-1.5 py-0.5 rounded text-xs font-medium shadow-sm whitespace-nowrap"
-                         style={{ right: 'calc(100% + 8px)' }}>
-                      {currentTime.toLocaleTimeString([], {
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        hour12: true
-                      }).replace(' ', '').toUpperCase()}
-                    </div>
+                    {isClient && (
+                      <div className="absolute top-1/2 -translate-y-1/2 bg-red-500 text-white px-1.5 py-0.5 rounded text-xs font-medium shadow-sm whitespace-nowrap"
+                           style={{ right: 'calc(100% + 8px)' }}>
+                        {currentTime.toLocaleTimeString([], {
+                          hour: 'numeric',
+                          minute: '2-digit',
+                          hour12: true
+                        }).replace(' ', '').toUpperCase()}
+                      </div>
+                    )}
                     {/* Red line across entire calendar width */}
                     <div className="absolute left-0 right-0 h-0.5 bg-red-500" />
 
@@ -2935,7 +3005,8 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
         <EventContextMenu
           event={contextMenu.event}
           position={contextMenu.position}
-          onClose={() => setContextMenu(null)}
+          onClose={closeContextMenu}
+          isClosing={contextMenu.isClosing}
           onCut={handleCut}
           onCopy={handleCopy}
           onDuplicate={handleDuplicate}
@@ -2947,7 +3018,7 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
               (event.recurrenceGroupId && !event.isVirtual);  // Exception event
 
             // Clear context menu immediately for better UX
-            setContextMenu(null);
+            closeContextMenu();
 
             if (isRecurringEvent) {
               // Show delete modal for recurring events

@@ -15,7 +15,7 @@ export interface Task {
   updatedAt: string;
 }
 
-export type EventColor = 'blue' | 'purple' | 'green' | 'yellow' | 'pink' | 'gray';
+export type EventColor = 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'purple' | 'gray';
 
 export type ReminderOption = 'at-time' | '5min' | '10min' | '30min' | '1hour' | '1day' | '1week' | '1month';
 
