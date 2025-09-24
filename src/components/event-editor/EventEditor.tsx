@@ -40,6 +40,21 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   const [descriptionHistoryIndex, setDescriptionHistoryIndex] = useState(-1);
   const [mounted, setMounted] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+  // Mouse movement detection for fullscreen UI
+  const [showFullscreenControls, setShowFullscreenControls] = useState(true); // Start visible
+  const mouseVelocityRef = useRef({ x: 0, y: 0, lastX: 0, lastY: 0, lastTime: Date.now() });
+  const hideControlsTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const VELOCITY_THRESHOLD = 1; // pixels per millisecond (more sensitive)
+  const HIDE_DELAY = 3000; // 3 seconds
+
+  // Preview width control sliders
+  const DEFAULT_PREVIEW_WIDTH = 60; // default width percentage
+  const [previewContentWidth, setPreviewContentWidth] = useState(DEFAULT_PREVIEW_WIDTH);
+  const [isDraggingLeftSlider, setIsDraggingLeftSlider] = useState(false);
+  const [isDraggingRightSlider, setIsDraggingRightSlider] = useState(false);
+  const lastLeftSliderClick = useRef<number>(0);
+  const lastRightSliderClick = useRef<number>(0)
   const [showEditModal, setShowEditModal] = useState(false);
   const [pendingChanges, setPendingChanges] = useState<Partial<CalendarEvent> | null>(null);
   const [isNewEvent, setIsNewEvent] = useState(false);
@@ -201,6 +216,110 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
       evt.color !== 'blue'
     );
   }, []);
+
+  // Mouse movement handler for fullscreen mode
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isFullScreen) return;
+
+    const now = Date.now();
+    const timeDelta = now - mouseVelocityRef.current.lastTime;
+
+    if (timeDelta > 0) {
+      const distanceX = Math.abs(e.clientX - mouseVelocityRef.current.lastX);
+      const distanceY = Math.abs(e.clientY - mouseVelocityRef.current.lastY);
+      const distance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
+      const velocity = distance / timeDelta;
+
+      // Show controls if velocity exceeds threshold
+      if (velocity > VELOCITY_THRESHOLD) {
+        setShowFullscreenControls(true);
+
+        // Clear existing timer
+        if (hideControlsTimerRef.current) {
+          clearTimeout(hideControlsTimerRef.current);
+        }
+
+        // Set new timer to hide controls after 3 seconds
+        hideControlsTimerRef.current = setTimeout(() => {
+          setShowFullscreenControls(false);
+        }, HIDE_DELAY);
+      }
+    }
+
+    // Update last position and time
+    mouseVelocityRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      lastX: e.clientX,
+      lastY: e.clientY,
+      lastTime: now
+    };
+  }, [isFullScreen]);
+
+  // Cleanup timer on unmount and handle fullscreen state changes
+  useEffect(() => {
+    if (isFullScreen) {
+      // Show controls when entering fullscreen
+      setShowFullscreenControls(true);
+
+      // Start timer to hide after 3 seconds
+      if (hideControlsTimerRef.current) {
+        clearTimeout(hideControlsTimerRef.current);
+      }
+      hideControlsTimerRef.current = setTimeout(() => {
+        setShowFullscreenControls(false);
+      }, HIDE_DELAY);
+    }
+
+    return () => {
+      if (hideControlsTimerRef.current) {
+        clearTimeout(hideControlsTimerRef.current);
+      }
+    };
+  }, [isFullScreen]);
+
+  // Handle slider drag for preview width
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingLeftSlider && !isDraggingRightSlider) return;
+
+      const viewportWidth = window.innerWidth;
+      const mouseX = e.clientX;
+
+      if (isDraggingLeftSlider) {
+        // Left slider position as percentage from left edge
+        const leftPosition = (mouseX / viewportWidth) * 100;
+        // Calculate width: 100% - (2 * distance from edge)
+        // Allow left slider to go all the way to 0
+        const newWidth = Math.max(10, Math.min(100, 100 - (2 * leftPosition)));
+        setPreviewContentWidth(newWidth);
+      } else if (isDraggingRightSlider) {
+        // Right slider position as percentage from left edge
+        const rightPosition = (mouseX / viewportWidth) * 100;
+        // Calculate width: 2 * distance from left edge - 100%
+        // Allow right slider to go all the way to 100
+        const newWidth = Math.max(10, Math.min(100, 2 * rightPosition - 100));
+        setPreviewContentWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingLeftSlider(false);
+      setIsDraggingRightSlider(false);
+    };
+
+    if (isDraggingLeftSlider || isDraggingRightSlider) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'ew-resize';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'auto';
+    };
+  }, [isDraggingLeftSlider, isDraggingRightSlider]);
 
   // Force immediate save (bypass debounce)
   const forceSave = useCallback(() => {
@@ -563,9 +682,9 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   return (
     <div
       ref={editorRef}
-      className={`${className} bg-white h-full border-l ${isNewEvent && !editedEvent.title ? 'border-yellow-400 animate-pulse' : 'border-gray-200'} p-4 relative z-40 flex flex-col`}
+      className={`${className} bg-white h-full border-l ${isNewEvent && !editedEvent.title ? 'border-yellow-400 animate-pulse' : 'border-gray-200'} p-4 relative z-40 flex flex-col overflow-hidden`}
     >
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-h-0">
         {/* Header with close button */}
         <div className="flex items-center justify-between gap-2 mb-2">
           <input
@@ -1685,11 +1804,11 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
         </div>
 
         {/* Description - extends to bottom */}
-        <div className="flex-1 flex flex-col mt-2">
-          <div className="relative w-full flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col mt-2 min-h-0">
+          <div className="relative w-full flex-1 flex flex-col min-h-0">
             {isEditingDescription ? (
-              <div className="w-full flex-1 flex flex-col">
-                <div className="w-full flex-1 border border-gray-300 rounded-lg overflow-hidden flex flex-col">
+              <div className="w-full flex-1 flex flex-col animate-descriptionFadeIn">
+                <div className="w-full flex-1 border border-gray-300 rounded-lg overflow-hidden flex flex-col shadow-sm">
                   {/* Formatting Toolbar */}
                   <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-200 bg-gray-50">
                     {/* Heading buttons */}
@@ -2164,13 +2283,16 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                         }
                       }
                     }}
-                    className="w-full flex-1 text-gray-700 bg-transparent px-4 py-3 outline-none focus:ring-0 resize-none text-sm"
+                    className="w-full flex-1 text-gray-700 bg-transparent px-4 py-3 outline-none focus:ring-0 resize-none text-sm min-h-0 overflow-y-auto"
                     placeholder="Write in markdown..."
                   />
                 </div>
                 <div className="flex items-center justify-between mt-2">
                   <button
-                    onClick={() => setIsFullScreen(true)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsFullScreen(true);
+                    }}
                     className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900 transition-colors"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2180,7 +2302,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                   </button>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         setIsEditingDescription(false);
                         setTempDescription('');
                       }}
@@ -2189,7 +2312,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                       Cancel
                     </button>
                     <button
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         updateEvent('description', tempDescription);
                         setIsEditingDescription(false);
                         setTempDescription('');
@@ -2205,8 +2329,23 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
               </div>
             ) : (
               <div
-                onClick={(e) => {
+                onMouseDown={(e) => {
+                  // Prevent any default mouse behavior
                   e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
+                }}
+                onPointerDown={(e) => {
+                  // Also stop pointer events
+                  e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
+                }}
+                onClick={(e) => {
+                  // Stop all propagation
+                  e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
+                  e.preventDefault();
+
+                  // Enter edit mode
                   setIsEditingDescription(true);
                   const initialDescription = editedEvent.description || '';
                   setTempDescription(initialDescription);
@@ -2220,13 +2359,28 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                     }
                   }, 50);
                 }}
-                className="w-full flex-1 text-gray-700 border border-gray-200 hover:border-gray-300 rounded-lg px-4 py-3 cursor-text transition-all duration-200 overflow-y-auto markdown-content hover:bg-gray-50"
+                className="w-full flex-1 text-gray-700 border border-gray-200 hover:border-gray-300 rounded-lg px-4 py-3 cursor-text transition-all duration-200 overflow-y-auto markdown-content hover:bg-gray-50 hover:shadow-sm max-h-full"
                 tabIndex={-1}
+                role="button"
+                aria-label="Click to edit description"
               >
                 {editedEvent.description ? (
-                  <div className="prose prose-sm max-w-none event-description-content">
+                  <div
+                    className="prose prose-sm max-w-none event-description-content"
+                    style={{ pointerEvents: 'auto' }}
+                  >
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
+                      components={{
+                        a: ({ children, href, ...props }) => (
+                          <span
+                            style={{ textDecoration: 'underline', cursor: 'inherit', color: 'inherit' }}
+                            onClick={(e) => e.preventDefault()}
+                          >
+                            {children}
+                          </span>
+                        )
+                      }}
                     >
                       {editedEvent.description}
                     </ReactMarkdown>
@@ -2245,20 +2399,23 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
         {/* Full Screen Editor Modal (via portal) */}
         {mounted && isFullScreen
           ? createPortal(
-              <div id="event-editor-portal" className="fixed inset-0 z-[9999]">
+              <div
+                id="event-editor-portal"
+                className="fixed inset-0 z-[9999]"
+                onMouseMove={handleMouseMove}
+              >
                 {/* Backdrop */}
                 <div
                   className="absolute inset-0 bg-white/95 backdrop-blur-sm"
                   onClick={() => setIsFullScreen(false)}
                 />
 
-                {/* Clean minimal editor */}
-                <div className="relative h-full flex items-center justify-center pointer-events-none">
-                  <div className="relative w-full h-full max-w-5xl flex items-center justify-center pointer-events-auto">
-                    <div className="w-full h-full flex flex-col py-12">
+                {/* Clean minimal editor - use full screen width */}
+                <div className="relative h-full w-full">
+                  <div className="w-full h-full flex flex-col">
 
-                      {/* Simple mode toggle - floating in top right */}
-                      <div className="absolute top-8 right-8 flex items-center gap-2">
+                      {/* Simple mode toggle - floating in top right corner */}
+                      <div className={`fixed top-4 right-4 flex items-center gap-2 z-50 transition-all duration-1000 ease-in-out ${showFullscreenControls ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`}>
                         <button
                           onClick={() => setFullScreenMode(fullScreenMode === 'editor' ? 'preview' : 'editor')}
                           className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors flex items-center gap-2"
@@ -2291,10 +2448,224 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                         </button>
                       </div>
 
+                      {/* Formatting toolbar for editor mode */}
+                      {fullScreenMode === 'editor' && (
+                        <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-100 px-4 py-2 flex items-center gap-1 z-40 transition-all duration-1000 ease-in-out ${showFullscreenControls ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}>
+                          {/* Heading buttons */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const textarea = document.querySelector('.fullscreen-textarea') as HTMLTextAreaElement;
+                              if (textarea) {
+                                const start = textarea.selectionStart;
+                                const end = textarea.selectionEnd;
+                                const selectedText = tempDescription.substring(start, end);
+                                const textBeforeCursor = tempDescription.substring(0, start);
+                                const isAtLineStart = start === 0 || textBeforeCursor.endsWith('\n');
+                                const prefix = isAtLineStart ? '' : '\n';
+                                const newText = `${prefix}# ${selectedText || 'Heading 1'}`;
+                                const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
+                                setTempDescription(newDescription);
+                                setTimeout(() => {
+                                  textarea.focus();
+                                  const offset = prefix.length + 2;
+                                  textarea.setSelectionRange(start + offset, start + offset + (selectedText.length || 9));
+                                }, 0);
+                              }
+                            }}
+                            className="px-3 py-1.5 text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
+                          >
+                            H1
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const textarea = document.querySelector('.fullscreen-textarea') as HTMLTextAreaElement;
+                              if (textarea) {
+                                const start = textarea.selectionStart;
+                                const end = textarea.selectionEnd;
+                                const selectedText = tempDescription.substring(start, end);
+                                const textBeforeCursor = tempDescription.substring(0, start);
+                                const isAtLineStart = start === 0 || textBeforeCursor.endsWith('\n');
+                                const prefix = isAtLineStart ? '' : '\n';
+                                const newText = `${prefix}## ${selectedText || 'Heading 2'}`;
+                                const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
+                                setTempDescription(newDescription);
+                                setTimeout(() => {
+                                  textarea.focus();
+                                  const offset = prefix.length + 3;
+                                  textarea.setSelectionRange(start + offset, start + offset + (selectedText.length || 9));
+                                }, 0);
+                              }
+                            }}
+                            className="px-3 py-1.5 text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
+                          >
+                            H2
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const textarea = document.querySelector('.fullscreen-textarea') as HTMLTextAreaElement;
+                              if (textarea) {
+                                const start = textarea.selectionStart;
+                                const end = textarea.selectionEnd;
+                                const selectedText = tempDescription.substring(start, end);
+                                const textBeforeCursor = tempDescription.substring(0, start);
+                                const isAtLineStart = start === 0 || textBeforeCursor.endsWith('\n');
+                                const prefix = isAtLineStart ? '' : '\n';
+                                const newText = `${prefix}### ${selectedText || 'Heading 3'}`;
+                                const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
+                                setTempDescription(newDescription);
+                                setTimeout(() => {
+                                  textarea.focus();
+                                  const offset = prefix.length + 4;
+                                  textarea.setSelectionRange(start + offset, start + offset + (selectedText.length || 9));
+                                }, 0);
+                              }
+                            }}
+                            className="px-3 py-1.5 text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
+                          >
+                            H3
+                          </button>
+
+                          <div className="w-px h-6 bg-gray-200 mx-1" />
+
+                          {/* Text formatting buttons */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const textarea = document.querySelector('.fullscreen-textarea') as HTMLTextAreaElement;
+                              if (textarea) {
+                                const start = textarea.selectionStart;
+                                const end = textarea.selectionEnd;
+                                const selectedText = tempDescription.substring(start, end);
+                                const newText = `**${selectedText || 'bold'}**`;
+                                const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
+                                setTempDescription(newDescription);
+                                setTimeout(() => {
+                                  textarea.focus();
+                                  textarea.setSelectionRange(start + 2, start + 2 + (selectedText.length || 4));
+                                }, 0);
+                              }
+                            }}
+                            className="px-3 py-1.5 text-sm font-bold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
+                          >
+                            B
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const textarea = document.querySelector('.fullscreen-textarea') as HTMLTextAreaElement;
+                              if (textarea) {
+                                const start = textarea.selectionStart;
+                                const end = textarea.selectionEnd;
+                                const selectedText = tempDescription.substring(start, end);
+                                const newText = `*${selectedText || 'italic'}*`;
+                                const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
+                                setTempDescription(newDescription);
+                                setTimeout(() => {
+                                  textarea.focus();
+                                  textarea.setSelectionRange(start + 1, start + 1 + (selectedText.length || 6));
+                                }, 0);
+                              }
+                            }}
+                            className="px-3 py-1.5 text-sm italic text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
+                          >
+                            I
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const textarea = document.querySelector('.fullscreen-textarea') as HTMLTextAreaElement;
+                              if (textarea) {
+                                const start = textarea.selectionStart;
+                                const end = textarea.selectionEnd;
+                                const selectedText = tempDescription.substring(start, end);
+                                const newText = `<u>${selectedText || 'underline'}</u>`;
+                                const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
+                                setTempDescription(newDescription);
+                                setTimeout(() => {
+                                  textarea.focus();
+                                  textarea.setSelectionRange(start + 3, start + 3 + (selectedText.length || 9));
+                                }, 0);
+                              }
+                            }}
+                            className="px-3 py-1.5 text-sm underline text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
+                          >
+                            U
+                          </button>
+
+                          <div className="w-px h-6 bg-gray-200 mx-1" />
+
+                          {/* List buttons */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const textarea = document.querySelector('.fullscreen-textarea') as HTMLTextAreaElement;
+                              if (textarea) {
+                                const start = textarea.selectionStart;
+                                const end = textarea.selectionEnd;
+                                const selectedText = tempDescription.substring(start, end);
+                                const textBeforeCursor = tempDescription.substring(0, start);
+                                const isAtLineStart = start === 0 || textBeforeCursor.endsWith('\n');
+                                const prefix = isAtLineStart ? '' : '\n';
+                                const newText = `${prefix}- ${selectedText || 'List item'}`;
+                                const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
+                                setTempDescription(newDescription);
+                                setTimeout(() => {
+                                  textarea.focus();
+                                  const offset = prefix.length + 2;
+                                  textarea.setSelectionRange(start + offset, start + offset + (selectedText.length || 9));
+                                }, 0);
+                              }
+                            }}
+                            className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
+                            title="Bullet list"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 6h13M8 12h13m-13 6h13M3 6h.01M3 12h.01M3 18h.01" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const textarea = document.querySelector('.fullscreen-textarea') as HTMLTextAreaElement;
+                              if (textarea) {
+                                const start = textarea.selectionStart;
+                                const end = textarea.selectionEnd;
+                                const selectedText = tempDescription.substring(start, end);
+                                const textBeforeCursor = tempDescription.substring(0, start);
+                                const isAtLineStart = start === 0 || textBeforeCursor.endsWith('\n');
+                                const lines = textBeforeCursor.split('\n');
+                                const currentLine = lines[lines.length - 1];
+                                const leadingSpaces = currentLine.match(/^(\s*)/)?.[1] || '';
+                                const prefix = isAtLineStart ? '' : '\n';
+                                const newText = `${prefix}${leadingSpaces}1. ${selectedText || 'List item'}`;
+                                const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
+                                setTempDescription(newDescription);
+                                setTimeout(() => {
+                                  textarea.focus();
+                                  const offset = prefix.length + leadingSpaces.length + 3;
+                                  textarea.setSelectionRange(start + offset, start + offset + (selectedText.length || 9));
+                                }, 0);
+                              }
+                            }}
+                            className="px-3 py-1.5 text-sm font-bold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
+                            title="Numbered list"
+                          >
+                            #
+                          </button>
+                        </div>
+                      )}
+
                       {/* Main content area - clean and focused */}
-                      <div className="flex-1 overflow-hidden">
+                      <div className="flex-1 overflow-hidden relative h-full">
                         {fullScreenMode === 'editor' ? (
-                          <textarea
+                          <>
+                            {/* Subtle fade at top for editor mode */}
+                            <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-white/80 to-transparent pointer-events-none z-10" />
+
+                            <textarea
                             value={tempDescription}
                             onChange={(e) => {
                               const newValue = e.target.value;
@@ -2350,33 +2721,115 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                                 setFullScreenMode('editor');
                               }
                             }}
-                            className="w-full h-full px-4 py-8 text-gray-800 bg-transparent outline-none resize-none font-mono text-lg leading-relaxed"
+                            className="fullscreen-textarea w-full h-full px-[max(2rem,calc((100vw-80rem)/2))] pt-12 pb-12 text-gray-800 bg-transparent outline-none resize-none font-mono text-lg leading-relaxed max-w-full"
                             placeholder="Start writing..."
                             autoFocus
                           />
+                          </>
                         ) : (
-                          <div className="w-full h-full px-4 py-8 overflow-y-auto">
-                            <div className="markdown-content prose prose-xl max-w-none text-gray-800 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol_ol]:list-[lower-alpha] [&_ol_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_ul_ul]:list-circle [&_ul_ul]:pl-5">
-                              {tempDescription ? (
-                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                  {tempDescription}
-                                </ReactMarkdown>
-                              ) : (
-                                <span className="text-gray-400 italic text-lg">Nothing to preview yet...</span>
-                              )}
+                          <div className="relative w-full h-full flex">
+                            {/* Left Slider */}
+                            <div
+                              className="absolute h-full z-20 group"
+                              style={{ left: `${(100 - previewContentWidth) / 2}%` }}
+                            >
+                              <div className="w-px bg-gray-200 h-full relative">
+                                <div className={`absolute inset-y-0 left-1/2 -translate-x-1/2 transition-all ${
+                                  isDraggingLeftSlider
+                                    ? 'w-1 bg-blue-500'
+                                    : 'w-px bg-gray-200 group-hover:bg-blue-400 group-hover:w-1'
+                                }`} />
+                              </div>
+                              <div
+                                className="absolute inset-y-0 -left-2 w-4 cursor-ew-resize"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+
+                                  // Check for double-click
+                                  const now = Date.now();
+                                  if (now - lastLeftSliderClick.current < 300) {
+                                    // Double-click detected - reset to default
+                                    setPreviewContentWidth(DEFAULT_PREVIEW_WIDTH);
+                                    lastLeftSliderClick.current = 0;
+                                    return;
+                                  }
+                                  lastLeftSliderClick.current = now;
+
+                                  setIsDraggingLeftSlider(true);
+                                }}
+                              />
+                            </div>
+
+                            {/* Right Slider */}
+                            <div
+                              className="absolute h-full z-20 group"
+                              style={{ right: `${(100 - previewContentWidth) / 2}%` }}
+                            >
+                              <div className="w-px bg-gray-200 h-full relative">
+                                <div className={`absolute inset-y-0 left-1/2 -translate-x-1/2 transition-all ${
+                                  isDraggingRightSlider
+                                    ? 'w-1 bg-blue-500'
+                                    : 'w-px bg-gray-200 group-hover:bg-blue-400 group-hover:w-1'
+                                }`} />
+                              </div>
+                              <div
+                                className="absolute inset-y-0 -right-2 w-4 cursor-ew-resize"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+
+                                  // Check for double-click
+                                  const now = Date.now();
+                                  if (now - lastRightSliderClick.current < 300) {
+                                    // Double-click detected - reset to default
+                                    setPreviewContentWidth(DEFAULT_PREVIEW_WIDTH);
+                                    lastRightSliderClick.current = 0;
+                                    return;
+                                  }
+                                  lastRightSliderClick.current = now;
+
+                                  setIsDraggingRightSlider(true);
+                                }}
+                              />
+                            </div>
+
+                            {/* Content area with controlled width */}
+                            <div className="relative w-full h-full">
+                              {/* Subtle fade at top */}
+                              <div className="absolute top-0 left-0 right-0 h-12 bg-gradient-to-b from-white/60 to-transparent pointer-events-none z-10" />
+
+                              {/* Content with hidden scrollbar but still scrollable */}
+                              <div className="w-full h-full overflow-y-auto scrollbar-hide">
+                                <div
+                                  className="mx-auto px-8 pt-12 pb-12"
+                                  style={{ width: `${previewContentWidth}%` }}
+                                >
+                                <div className="markdown-content prose prose-xl max-w-none text-gray-800 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol_ol]:list-[lower-alpha] [&_ol_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_ul_ul]:list-circle [&_ul_ul]:pl-5">
+                                {tempDescription ? (
+                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {tempDescription}
+                                  </ReactMarkdown>
+                                ) : (
+                                  <span className="text-gray-400 italic text-lg">Nothing to preview yet...</span>
+                                )}
+                                </div>
+                                </div>
+                              </div>
+
+                              {/* Subtle bottom fade */}
+                              <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-white/60 to-transparent pointer-events-none z-10" />
                             </div>
                           </div>
                         )}
                       </div>
 
                       {/* Minimal footer - just save/cancel */}
-                      <div className="flex items-center justify-center gap-4 pt-8">
+                      <div className={`fixed bottom-4 left-1/2 transform -translate-x-1/2 flex items-center justify-center gap-3 z-30 bg-white/90 backdrop-blur-sm rounded-xl shadow-lg px-4 py-2 border border-gray-100 transition-all duration-1000 ease-in-out ${showFullscreenControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
                         <button
                           onClick={() => {
                             setIsFullScreen(false);
                             setFullScreenMode('editor');
                           }}
-                          className="px-6 py-2 text-gray-600 hover:text-gray-900 transition-colors"
+                          className="px-5 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
                         >
                           Cancel
                         </button>
@@ -2388,12 +2841,11 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                             setTempDescription('');
                             setFullScreenMode('editor');
                           }}
-                          className="px-8 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
+                          className="px-6 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-all"
                         >
                           Save
                         </button>
                       </div>
-                    </div>
                   </div>
                 </div>
               </div>,
