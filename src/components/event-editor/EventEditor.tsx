@@ -31,7 +31,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   const [localTitle, setLocalTitle] = useState('');
   const [localDescription, setLocalDescription] = useState('');
   const [repeatOption, setRepeatOption] = useState<string>('none');
-  const [editingField, setEditingField] = useState<'start' | 'end' | 'repeat' | 'category' | 'color' | 'reminder' | 'meeting' | null>(null);
+  const [editingField, setEditingField] = useState<'start' | 'end' | 'repeat' | 'category' | 'location' | 'color' | 'reminder' | 'meeting' | null>(null);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [tempDescription, setTempDescription] = useState('');
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -44,10 +44,13 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   const [titleInputEnabled, setTitleInputEnabled] = useState(false);
   const [categories, setCategories] = useState<string[]>([]);
   const [newCategoryInput, setNewCategoryInput] = useState('');
+  const [locations, setLocations] = useState<string[]>([]);
+  const [newLocationInput, setNewLocationInput] = useState('');
   const [hoveredMeeting, setHoveredMeeting] = useState<string | null>(null);
   const [hasMeetingBeenSelected, setHasMeetingBeenSelected] = useState(false);
   const [hoveredReminder, setHoveredReminder] = useState<string | null>(null);
   const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
+  const [hoveredLocation, setHoveredLocation] = useState<string | null>(null);
   const [hoveredColor, setHoveredColor] = useState<string | null>(null);
   const [hoveredRepeat, setHoveredRepeat] = useState<string | null>(null);
   const [hoveredStartTime, setHoveredStartTime] = useState<string | null>(null);
@@ -71,6 +74,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   const repeatRef = useRef<HTMLElement>(null!);
   const colorRef = useRef<HTMLElement>(null!);
   const categoryRef = useRef<HTMLElement>(null!);
+  const locationRef = useRef<HTMLElement>(null!);
   const reminderRef = useRef<HTMLElement>(null!);
   const meetingRef = useRef<HTMLElement>(null!);
 
@@ -87,6 +91,18 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
         }
       } catch (e) {
         console.error('Failed to parse saved categories:', e);
+      }
+    }
+    // Load locations from localStorage
+    const savedLocations = localStorage.getItem('eventLocations');
+    if (savedLocations) {
+      try {
+        const parsed = JSON.parse(savedLocations);
+        if (Array.isArray(parsed)) {
+          setLocations(parsed);
+        }
+      } catch (e) {
+        console.error('Failed to parse saved locations:', e);
       }
     }
   }, []);
@@ -145,6 +161,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
             eventToSave.description !== event.description ||
             eventToSave.color !== event.color ||
             eventToSave.category !== event.category ||
+            eventToSave.location !== event.location ||
             eventToSave.reminder !== event.reminder ||
             eventToSave.meeting !== event.meeting ||
             eventToSave.recurrence !== event.recurrence;
@@ -1167,7 +1184,12 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                       onMouseEnter={() => setHoveredCategory(cat)}
                       onMouseLeave={() => setHoveredCategory(null)}
                       onClick={() => {
-                        updateEvent('category', cat);
+                        // Toggle behavior: if clicking the same category, deselect it
+                        if (editedEvent.category === cat) {
+                          updateEvent('category', undefined);
+                        } else {
+                          updateEvent('category', cat);
+                        }
                         setEditingField(null);
                         setHoveredCategory(null);
                       }}
@@ -1191,6 +1213,144 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                       </div>
                     </div>
                   ));
+                  })()}
+                </div>
+              </div>
+            </div>
+          </PortalDropdown>
+        </div>
+
+        {/* Location */}
+        <div className="relative">
+          <button
+            ref={locationRef as React.RefObject<HTMLButtonElement>}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              setEditingField(editingField === 'location' ? null : 'location');
+            }}
+            className={`group w-full flex items-center justify-between py-3 px-3 -mx-2 rounded-lg transition-colors ${
+              editingField === 'location' ? 'bg-gray-50' : 'hover:bg-gray-50'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <span className="text-gray-700">{hoveredLocation || editedEvent.location || 'Location'}</span>
+            </div>
+            <svg className="w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          <PortalDropdown
+            isOpen={editingField === 'location'}
+            triggerRef={locationRef}
+            onClose={() => {
+              setEditingField(null);
+              setHoveredLocation(null);
+            }}
+            offsetX={-253}
+            offsetY={0}
+          >
+            <div
+              className="location-picker"
+              onMouseLeave={() => setHoveredLocation(null)}
+            >
+              <div className="bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden" style={{ width: '240px' }}>
+                {/* Add new location input */}
+                <div className="p-2 border-b border-gray-200">
+                  <input
+                    type="text"
+                    value={newLocationInput}
+                    onChange={(e) => setNewLocationInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newLocationInput.trim()) {
+                        const newLocation = newLocationInput.trim();
+                        // Check if there's an exact match first (case-insensitive)
+                        const existingLocation = locations.find(loc =>
+                          loc.toLowerCase() === newLocation.toLowerCase()
+                        );
+
+                        if (existingLocation) {
+                          // Use the existing location with its original casing
+                          updateEvent('location', existingLocation);
+                        } else {
+                          // Add as new location
+                          const updatedLocations = [...locations, newLocation];
+                          setLocations(updatedLocations);
+                          localStorage.setItem('eventLocations', JSON.stringify(updatedLocations));
+                          updateEvent('location', newLocation);
+                        }
+                        setNewLocationInput('');
+                        setEditingField(null);
+                      }
+                    }}
+                    placeholder="Search or add location..."
+                    className="w-full px-2 py-1 text-sm text-gray-900 placeholder-gray-500 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                    autoFocus
+                  />
+                </div>
+                {/* Existing locations */}
+                <div>
+                  {/* User locations - filtered by search input */}
+                  {(() => {
+                    const searchLower = newLocationInput.toLowerCase();
+                    const filteredLocations = locations.filter(loc =>
+                      loc.toLowerCase().includes(searchLower)
+                    );
+
+                    const defaultLocations = ['Home', 'Office', 'Remote'];
+                    const combinedLocations = [...new Set([...filteredLocations, ...defaultLocations])];
+                    const locationsToShow = combinedLocations.filter(loc =>
+                      loc.toLowerCase().includes(searchLower)
+                    );
+
+                    if (locationsToShow.length === 0 && newLocationInput.trim()) {
+                      return (
+                        <div className="px-4 py-3 text-center">
+                          <p className="text-sm text-gray-500">No matching locations</p>
+                          <p className="text-xs text-gray-400 mt-1">Press Enter to create "{newLocationInput.trim()}"</p>
+                        </div>
+                      );
+                    }
+
+                    return locationsToShow.map((loc, index, array) => (
+                      <div
+                        key={loc}
+                        onMouseEnter={() => setHoveredLocation(loc)}
+                        onMouseLeave={() => setHoveredLocation(null)}
+                        onClick={() => {
+                          // Toggle behavior: if clicking the same location, deselect it
+                          if (editedEvent.location === loc) {
+                            updateEvent('location', undefined);
+                          } else {
+                            updateEvent('location', loc);
+                          }
+                          setEditingField(null);
+                          setHoveredLocation(null);
+                        }}
+                        className={`px-2 cursor-pointer ${
+                          index === 0 ? 'pt-2' :
+                          index === array.length - 1 ? 'pb-2' :
+                          ''
+                        }`}
+                      >
+                        <div className={`flex items-center px-2 py-2.5 rounded-md transition-colors ${
+                          editedEvent.location === loc
+                            ? 'bg-blue-50'
+                            : 'hover:bg-gray-100'
+                        }`}>
+                          <span className="text-gray-700 text-sm flex-1">{loc}</span>
+                          {editedEvent.location === loc && (
+                            <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+                      </div>
+                    ));
                   })()}
                 </div>
               </div>
