@@ -2688,7 +2688,7 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
             </div>
 
               {/* Current time indicator - horizontal line across all days */}
-              {(() => {
+              {isClient && (() => {
                 const currentHour = currentTime.getHours();
                 const currentMinute = currentTime.getMinutes();
                 const topPosition = currentHour * 64 + (currentMinute / 60) * 64;
@@ -2699,16 +2699,14 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                     style={{ top: `${topPosition}px` }}
                   >
                     {/* Time badge - positioned at the right edge of time column */}
-                    {isClient && (
-                      <div className="absolute top-1/2 -translate-y-1/2 bg-red-500 text-white px-1.5 py-0.5 rounded text-xs font-medium shadow-sm whitespace-nowrap"
-                           style={{ right: 'calc(100% + 8px)' }}>
-                        {currentTime.toLocaleTimeString([], {
-                          hour: 'numeric',
-                          minute: '2-digit',
-                          hour12: true
-                        }).replace(' ', '').toUpperCase()}
-                      </div>
-                    )}
+                    <div className="absolute top-1/2 -translate-y-1/2 bg-red-500 text-white px-1.5 py-0.5 rounded text-xs font-medium shadow-sm whitespace-nowrap"
+                         style={{ right: 'calc(100% + 8px)' }}>
+                      {currentTime.toLocaleTimeString([], {
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        hour12: true
+                      }).replace(' ', '').toUpperCase()}
+                    </div>
                     {/* Red line across entire calendar width */}
                     <div className="absolute left-0 right-0 h-0.5 bg-red-500" />
 

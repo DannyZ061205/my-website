@@ -36,6 +36,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   const [tempDescription, setTempDescription] = useState('');
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [fullScreenMode, setFullScreenMode] = useState<'editor' | 'preview'>('editor');
+  const cancelClickTimeRef = useRef<number>(0);
   const [descriptionHistory, setDescriptionHistory] = useState<string[]>([]);
   const [descriptionHistoryIndex, setDescriptionHistoryIndex] = useState(-1);
   const [mounted, setMounted] = useState(false);
@@ -399,6 +400,11 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
       const target = e.target as Node;
       const targetElement = target as HTMLElement;
 
+      // If we're editing description, ignore all outside clicks
+      if (isEditingDescription) {
+        return;
+      }
+
       // If click is inside the main editor, ignore
       if (editorRef.current && editorRef.current.contains(target)) {
         return;
@@ -456,7 +462,11 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (isFullScreen) {
+        if (isEditingDescription) {
+          // If editing description, just cancel the description edit
+          setIsEditingDescription(false);
+          setTempDescription('');
+        } else if (isFullScreen) {
           setIsFullScreen(false);
         } else {
           // Just close the editor - deletion handled when new action starts
@@ -497,7 +507,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
       document.removeEventListener('click', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [onCancel, onSave, onDelete, isFullScreen, saveTimeout, hasEventBeenModified, editedEvent]);
+  }, [onCancel, onSave, onDelete, isFullScreen, saveTimeout, hasEventBeenModified, editedEvent, isEditingDescription]);
 
   // Clean up timeout on unmount
   useEffect(() => {
@@ -2302,8 +2312,17 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                   </button>
                   <div className="flex items-center gap-2">
                     <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
+                      }}
                       onClick={(e) => {
                         e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
+                        e.preventDefault();
+                        cancelClickTimeRef.current = Date.now();
                         setIsEditingDescription(false);
                         setTempDescription('');
                       }}
@@ -2312,6 +2331,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                       Cancel
                     </button>
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         updateEvent('description', tempDescription);
@@ -2344,6 +2364,11 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                   e.stopPropagation();
                   e.nativeEvent.stopImmediatePropagation();
                   e.preventDefault();
+
+                  // Prevent re-entering edit mode immediately after canceling
+                  if (Date.now() - cancelClickTimeRef.current < 100) {
+                    return;
+                  }
 
                   // Enter edit mode
                   setIsEditingDescription(true);
