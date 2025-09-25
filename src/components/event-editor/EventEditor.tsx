@@ -2529,10 +2529,11 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                         <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 relative p-1">
                           {/* Sliding indicator background */}
                           <div
-                            className="absolute top-1 bottom-1 bg-gray-900 rounded-lg transition-all duration-300 ease-out"
+                            className="absolute top-1 bottom-1 bg-gray-900 rounded-lg"
                             style={{
                               width: fullScreenMode === 'editor' ? '80px' : '105px',
-                              left: fullScreenMode === 'editor' ? '4px' : '88px'
+                              left: fullScreenMode === 'editor' ? '4px' : '88px',
+                              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
                             }}
                           />
                           <div className="relative flex items-center">
