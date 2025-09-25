@@ -21,7 +21,8 @@
       "Read(//Users/zichen.zhao/**)",
       "Bash(git init:*)",
       "Bash(git checkout:*)",
-      "Bash(kill:*)"
+      "Bash(kill:*)",
+      "Bash(git tag:*)"
     ],
     "deny": [],
     "ask": []

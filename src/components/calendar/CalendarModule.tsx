@@ -2325,23 +2325,127 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && searchResults.length > 0) {
-                    // Cycle through search results
-                    const currentIndex = searchResults.indexOf(focusedEventId || '');
-                    const nextIndex = (currentIndex + 1) % searchResults.length;
-                    const nextEventId = searchResults[nextIndex];
+                    // Get events in current week
+                    const weekStart = weekDates[0];
+                    const weekEnd = new Date(weekDates[6]);
+                    weekEnd.setHours(23, 59, 59, 999);
 
-                    setFocusedEventId(nextEventId);
+                    // Filter search results to current week only
+                    const currentWeekResults = searchResults.filter(id => {
+                      const event = events.find(e => e.id === id);
+                      if (!event) return false;
+                      const eventDate = new Date(event.start);
+                      return eventDate >= weekStart && eventDate <= weekEnd;
+                    });
 
-                    // Scroll to next result
-                    const nextEvent = events.find(e => e.id === nextEventId);
-                    if (nextEvent && scrollContainerRef.current) {
-                      const eventStart = new Date(nextEvent.start);
-                      const hour = eventStart.getHours();
-                      const scrollPosition = hour * 64 - 100;
-                      scrollContainerRef.current.scrollTo({
-                        top: Math.max(0, scrollPosition),
-                        behavior: 'smooth'
+                    // Find current index within current week results
+                    const currentWeekIndex = currentWeekResults.indexOf(focusedEventId || '');
+
+                    // Check if we need to switch weeks
+                    if (currentWeekIndex === currentWeekResults.length - 1 || currentWeekResults.length === 0) {
+                      // We're at the last event in current week or no events in current week
+                      // Find the next event in future weeks
+                      const futureResults = searchResults.filter(id => {
+                        const event = events.find(e => e.id === id);
+                        if (!event) return false;
+                        const eventDate = new Date(event.start);
+                        return eventDate > weekEnd;
+                      }).sort((a, b) => {
+                        const eventA = events.find(e => e.id === a);
+                        const eventB = events.find(e => e.id === b);
+                        if (!eventA || !eventB) return 0;
+                        return new Date(eventA.start).getTime() - new Date(eventB.start).getTime();
                       });
+
+                      if (futureResults.length > 0) {
+                        // Switch to the week containing the next result
+                        const nextEventId = futureResults[0];
+                        const nextEvent = events.find(e => e.id === nextEventId);
+                        if (nextEvent) {
+                          const nextEventDate = new Date(nextEvent.start);
+                          // Calculate the start of the week containing this event
+                          const newWeekStart = new Date(nextEventDate);
+                          newWeekStart.setDate(nextEventDate.getDate() - ((nextEventDate.getDay() + 6) % 7));
+                          newWeekStart.setHours(0, 0, 0, 0);
+
+                          // Switch to that week
+                          setCurrentDate(newWeekStart);
+                          setFocusedEventId(nextEventId);
+
+                          // Scroll to the event after week switch
+                          setTimeout(() => {
+                            if (scrollContainerRef.current) {
+                              const hour = nextEventDate.getHours();
+                              const scrollPosition = hour * 64 - 100;
+                              scrollContainerRef.current.scrollTo({
+                                top: Math.max(0, scrollPosition),
+                                behavior: 'smooth'
+                              });
+                            }
+                          }, 100);
+                        }
+                      } else {
+                        // No future results, wrap to beginning
+                        const pastAndCurrentResults = searchResults.filter(id => {
+                          const event = events.find(e => e.id === id);
+                          if (!event) return false;
+                          const eventDate = new Date(event.start);
+                          return eventDate <= weekEnd;
+                        }).sort((a, b) => {
+                          const eventA = events.find(e => e.id === a);
+                          const eventB = events.find(e => e.id === b);
+                          if (!eventA || !eventB) return 0;
+                          return new Date(eventA.start).getTime() - new Date(eventB.start).getTime();
+                        });
+
+                        if (pastAndCurrentResults.length > 0) {
+                          const firstEventId = pastAndCurrentResults[0];
+                          const firstEvent = events.find(e => e.id === firstEventId);
+                          if (firstEvent) {
+                            const firstEventDate = new Date(firstEvent.start);
+                            // Calculate the start of the week containing this event
+                            const newWeekStart = new Date(firstEventDate);
+                            newWeekStart.setDate(firstEventDate.getDate() - ((firstEventDate.getDay() + 6) % 7));
+                            newWeekStart.setHours(0, 0, 0, 0);
+
+                            // Switch to that week if different from current
+                            if (newWeekStart.getTime() !== weekStart.getTime()) {
+                              setCurrentDate(newWeekStart);
+                            }
+                            setFocusedEventId(firstEventId);
+
+                            // Scroll to the event
+                            setTimeout(() => {
+                              if (scrollContainerRef.current) {
+                                const hour = firstEventDate.getHours();
+                                const scrollPosition = hour * 64 - 100;
+                                scrollContainerRef.current.scrollTo({
+                                  top: Math.max(0, scrollPosition),
+                                  behavior: 'smooth'
+                                });
+                              }
+                            }, 100);
+                          }
+                        }
+                      }
+                    } else {
+                      // Still have events in current week to cycle through
+                      const nextIndex = (currentWeekIndex + 1) % currentWeekResults.length;
+                      const nextEventId = currentWeekResults[nextIndex];
+
+                      setFocusedEventId(nextEventId);
+
+                      // Scroll to next result
+                      const nextEvent = events.find(e => e.id === nextEventId);
+                      if (nextEvent && scrollContainerRef.current) {
+                        const eventStart = new Date(nextEvent.start);
+                        const hour = eventStart.getHours();
+                        const scrollPosition = hour * 64 - 100;
+                        scrollContainerRef.current.scrollTo({
+                          top: Math.max(0, scrollPosition),
+                          behavior: 'smooth'
+                        });
+                      }
                     }
                   } else if (e.key === 'Escape') {
                     // Clear search
