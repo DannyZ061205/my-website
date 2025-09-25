@@ -25,13 +25,26 @@ export interface Message {
   timestamp: Date;
 }
 
-const MessageBubble: React.FC<{ message: Message }> = ({ message }) => {
+const MessageBubble: React.FC<{
+  message: Message;
+  shouldAnimate: boolean;
+  onAnimationComplete?: () => void;
+}> = ({ message, shouldAnimate, onAnimationComplete }) => {
   const isUser = message.sender === 'user';
   const isTyping = message.id.startsWith('typing-') && message.sender === 'assistant';
-  const isNewAssistantMessage = !isUser && !isTyping && !message.id.startsWith('typing-');
 
   // Split content into words for animation
   const words = message.content.split(' ');
+
+  // Call onAnimationComplete after animation finishes
+  useEffect(() => {
+    if (shouldAnimate && onAnimationComplete && !isUser && !isTyping) {
+      // Calculate total animation time
+      const totalAnimationTime = words.length * 50 + 300; // 50ms per word + 300ms for animation
+      const timer = setTimeout(onAnimationComplete, totalAnimationTime);
+      return () => clearTimeout(timer);
+    }
+  }, [shouldAnimate, onAnimationComplete, isUser, isTyping, words.length]);
 
   return (
     <div className={`group mb-6 ${isUser ? 'flex justify-end' : 'flex justify-start'}`}>
@@ -59,7 +72,7 @@ const MessageBubble: React.FC<{ message: Message }> = ({ message }) => {
               </div>
             ) : (
               <div>
-                {isNewAssistantMessage ? (
+                {shouldAnimate && !isUser && !isTyping ? (
                   <>
                     {words.map((word, index) => (
                       <span
@@ -115,6 +128,9 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
     // Not wrapped in ChatProvider, use local state
     contextValue = null;
   }
+
+  // Local tracking for animated messages if not using context
+  const [localAnimatedIds, setLocalAnimatedIds] = useState<Set<string>>(new Set());
 
   // Use controlled state if provided, otherwise use context if available, otherwise use internal state
   const [internalMessages, setInternalMessages] = useState<Message[]>([]);
@@ -353,9 +369,27 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
         ) : (
           <>
             <div className="max-w-3xl mx-auto px-6 pt-6 pb-6">
-              {messages.map(m => (
-                <MessageBubble key={m.id} message={m} />
-              ))}
+              {messages.map(m => {
+                const animatedIds = contextValue?.animatedMessageIds ?? localAnimatedIds;
+                const shouldAnimate = !m.id.startsWith('typing-') &&
+                                     m.sender === 'assistant' &&
+                                     !animatedIds.has(m.id);
+
+                return (
+                  <MessageBubble
+                    key={m.id}
+                    message={m}
+                    shouldAnimate={shouldAnimate}
+                    onAnimationComplete={() => {
+                      if (contextValue?.markMessageAnimated) {
+                        contextValue.markMessageAnimated(m.id);
+                      } else {
+                        setLocalAnimatedIds(prev => new Set(prev).add(m.id));
+                      }
+                    }}
+                  />
+                );
+              })}
             </div>
 
             {/* Jump to latest chip */}

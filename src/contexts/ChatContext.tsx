@@ -14,6 +14,8 @@ interface ChatContextType {
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   inputValue: string;
   setInputValue: React.Dispatch<React.SetStateAction<string>>;
+  animatedMessageIds: Set<string>;
+  markMessageAnimated: (id: string) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -21,9 +23,21 @@ const ChatContext = createContext<ChatContextType | undefined>(undefined);
 export function ChatProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
+  const [animatedMessageIds, setAnimatedMessageIds] = useState<Set<string>>(new Set());
+
+  const markMessageAnimated = (id: string) => {
+    setAnimatedMessageIds(prev => new Set(prev).add(id));
+  };
 
   return (
-    <ChatContext.Provider value={{ messages, setMessages, inputValue, setInputValue }}>
+    <ChatContext.Provider value={{
+      messages,
+      setMessages,
+      inputValue,
+      setInputValue,
+      animatedMessageIds,
+      markMessageAnimated
+    }}>
       {children}
     </ChatContext.Provider>
   );
