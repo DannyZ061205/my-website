@@ -350,7 +350,16 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
         editedEvent.end !== event.end)) {
       setEditedEvent({ ...event });
       setLocalTitle(event.title || '');
-      setLocalDescription(event.description || '');
+
+      // For new events (justCreated), always clear the description/notes
+      // For existing events, use their actual description
+      if (event.justCreated) {
+        setLocalDescription('');
+        setTempDescription('');
+        setIsEditingDescription(false);
+      } else {
+        setLocalDescription(event.description || '');
+      }
       // If event has a meeting value, set the flag
       if (event.meeting) {
         setHasMeetingBeenSelected(true);
@@ -2117,6 +2126,14 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                       const newValue = e.target.value;
                       setTempDescription(newValue);
 
+                      // Update the live context for instant display update (like title does)
+                      if (editedEvent) {
+                        updateLiveEvent(editedEvent.id, { description: newValue });
+                        const updated = { ...editedEvent, description: newValue };
+                        setEditedEvent(updated);
+                        editedEventRef.current = updated;
+                      }
+
                       // Add to history on significant changes (debounced effect)
                       // Clear any existing timer
                       if (historyTimerRef.current) {
@@ -2345,7 +2362,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                       }
                     }}
                     className="w-full flex-1 text-gray-700 bg-transparent px-4 py-3 outline-none focus:ring-0 resize-none text-sm min-h-0 overflow-y-auto font-mono"
-                    placeholder="Write in markdown • Use ChatGPT's copy button to preserve formatting..."
+                    placeholder="Add your notes in markdown • Use ChatGPT's copy button to preserve formatting..."
                   />
                 </div>
                 <div className="flex items-center justify-between mt-3 px-1">
@@ -2401,7 +2418,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                         setTempDescription('');
                       }}
                       className="px-4 py-1.5 text-xs bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 font-medium flex items-center gap-1.5 shadow-sm"
-                      title="Save description (Cmd+Enter)"
+                      title="Save notes (Cmd+Enter)"
                     >
                       Confirm
                       <span className="text-[10px] opacity-90 font-normal">(⌘↵)</span>
@@ -2481,7 +2498,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                       </svg>
                     </div>
                     <span className="text-gray-600 font-medium text-sm">
-                      Click to add description
+                      Click to add notes
                     </span>
                     <span className="text-xs text-gray-400 mt-2 leading-relaxed max-w-[280px]">
                       Supports Markdown • Tables • Lists • Code blocks
@@ -2864,7 +2881,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                               }
                             }}
                             className="fullscreen-textarea w-full h-full px-[max(2rem,calc((100vw-80rem)/2))] pt-12 pb-12 text-gray-800 bg-transparent outline-none resize-none font-mono text-lg leading-relaxed max-w-full"
-                            placeholder="Start writing..."
+                            placeholder="Add your notes..."
                           />
                           </>
                           </div>
@@ -2991,7 +3008,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                             }}
                             className="px-5 py-2 text-sm font-medium bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-sm flex items-center gap-2"
                           >
-                            Save Description
+                            Save Notes
                             <span className="text-[10px] opacity-90 font-normal">(⌘↵)</span>
                           </button>
                         </div>
