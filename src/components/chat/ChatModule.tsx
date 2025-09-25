@@ -51,13 +51,13 @@ const MessageBubble: React.FC<{
       <div className={isUser ? "max-w-[70%]" : "w-full"}>
         {isUser ? (
           <div
-            className="inline-block px-4 py-2.5 rounded-2xl text-sm bg-gray-800 text-white"
+            className="inline-block px-4 py-2.5 rounded-2xl text-sm bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-sm"
             style={{ wordBreak: 'break-all', overflowWrap: 'anywhere', maxWidth: '100%' }}
           >
             {message.content}
           </div>
         ) : (
-          <div className="text-sm text-gray-900 leading-relaxed break-words">
+          <div className="text-sm text-gray-700 leading-relaxed break-words">
             {isTyping ? (
               <div className="flex items-center space-x-1 py-2">
                 <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
@@ -411,7 +411,7 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
       </div>
 
       {/* Input Area */}
-      <div className="p-4">
+      <div className="p-4 bg-white">
         <div className="max-w-3xl mx-auto">
           <div className="relative flex items-center">
             <textarea
