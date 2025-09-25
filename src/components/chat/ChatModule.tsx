@@ -11,9 +11,13 @@ import React, {
 interface ChatModuleProps {
   className?: string;
   shouldAutoFocus?: boolean;
+  messages?: Message[];
+  onMessagesChange?: (messages: Message[]) => void;
+  inputValue?: string;
+  onInputChange?: (value: string) => void;
 }
 
-interface Message {
+export interface Message {
   id: string;
   content: string;
   sender: 'user' | 'assistant';
@@ -22,11 +26,15 @@ interface Message {
 
 const MessageBubble: React.FC<{ message: Message }> = ({ message }) => {
   const isUser = message.sender === 'user';
-  const isTyping = message.id.startsWith('typing-');
+  const isTyping = message.id.startsWith('typing-') && message.sender === 'assistant';
+  const isNewAssistantMessage = !isUser && !isTyping && !message.id.startsWith('typing-');
+
+  // Split content into words for animation
+  const words = message.content.split(' ');
 
   return (
     <div className={`group mb-6 ${isUser ? 'flex justify-end' : 'flex justify-start'}`}>
-      <div className="max-w-[70%]">
+      <div className={isUser ? "max-w-[70%]" : "w-full"}>
         {isUser ? (
           <div
             className="inline-block px-4 py-2.5 rounded-2xl text-sm bg-gray-800 text-white"
@@ -37,7 +45,7 @@ const MessageBubble: React.FC<{ message: Message }> = ({ message }) => {
         ) : (
           <div className="text-sm text-gray-900 leading-relaxed break-words">
             {isTyping ? (
-              <div className="flex items-center space-x-1">
+              <div className="flex items-center space-x-1 py-2">
                 <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
                 <div
                   className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
@@ -49,7 +57,36 @@ const MessageBubble: React.FC<{ message: Message }> = ({ message }) => {
                 />
               </div>
             ) : (
-              message.content
+              <div>
+                {isNewAssistantMessage ? (
+                  <>
+                    {words.map((word, index) => (
+                      <span
+                        key={index}
+                        className="inline-block animate-word-reveal"
+                        style={{
+                          animationDelay: `${index * 0.05}s`,
+                          opacity: 0
+                        }}
+                      >
+                        {word}{index < words.length - 1 ? '\u00A0' : ''}
+                      </span>
+                    ))}
+                    <style jsx>{`
+                      @keyframes wordReveal {
+                        to {
+                          opacity: 1;
+                        }
+                      }
+                      :global(.animate-word-reveal) {
+                        animation: wordReveal 0.3s ease-in forwards;
+                      }
+                    `}</style>
+                  </>
+                ) : (
+                  message.content
+                )}
+              </div>
             )}
           </div>
         )}
@@ -61,10 +98,46 @@ const MessageBubble: React.FC<{ message: Message }> = ({ message }) => {
 let _uid = 0;
 const uid = () => `${Date.now()}-${_uid++}`;
 
-export const ChatModule: React.FC<ChatModuleProps> = ({ className = '', shouldAutoFocus = true }) => {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [inputValue, setInputValue] = useState('');
+export const ChatModule: React.FC<ChatModuleProps> = ({
+  className = '',
+  shouldAutoFocus = true,
+  messages: controlledMessages,
+  onMessagesChange,
+  inputValue: controlledInputValue,
+  onInputChange
+}) => {
+  // Use controlled state if provided, otherwise use internal state
+  const [internalMessages, setInternalMessages] = useState<Message[]>([]);
+  const [internalInputValue, setInternalInputValue] = useState('');
+
+  const messages = controlledMessages ?? internalMessages;
+  const inputValue = controlledInputValue ?? internalInputValue;
+
+  const setMessages = useCallback((value: Message[] | ((prev: Message[]) => Message[])) => {
+    if (onMessagesChange) {
+      // Controlled mode
+      if (typeof value === 'function') {
+        // For function updates, we need to get the current messages
+        const currentMessages = controlledMessages ?? internalMessages;
+        onMessagesChange(value(currentMessages));
+      } else {
+        onMessagesChange(value);
+      }
+    } else {
+      // Uncontrolled mode
+      setInternalMessages(value);
+    }
+  }, [controlledMessages, internalMessages, onMessagesChange]);
+
+  const setInputValue = useCallback((value: string) => {
+    if (onInputChange) {
+      onInputChange(value);
+    } else {
+      setInternalInputValue(value);
+    }
+  }, [onInputChange]);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -72,6 +145,7 @@ export const ChatModule: React.FC<ChatModuleProps> = ({ className = '', shouldAu
 
   // holds the current "typing message id" so we can replace it in-place
   const pendingTypingIdRef = useRef<string | null>(null);
+  const generationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (shouldAutoFocus) {
@@ -118,7 +192,7 @@ export const ChatModule: React.FC<ChatModuleProps> = ({ className = '', shouldAu
       "I'm ready to help you organize your time and tasks. What's on your mind?",
     ];
     return {
-      id: uid(),
+      id: `msg-${uid()}`, // Ensure ID doesn't start with 'typing-'
       content: responses[Math.floor(Math.random() * responses.length)],
       sender: 'assistant',
       timestamp: new Date(),
@@ -126,8 +200,24 @@ export const ChatModule: React.FC<ChatModuleProps> = ({ className = '', shouldAu
     // In your real app, replace the above with your API call / streaming handler.
   };
 
+  const handleStopGeneration = () => {
+    // Clear the timeout
+    if (generationTimeoutRef.current) {
+      clearTimeout(generationTimeoutRef.current);
+      generationTimeoutRef.current = null;
+    }
+    // Remove typing indicator
+    if (pendingTypingIdRef.current) {
+      setMessages(prev => prev.filter(msg => msg.id !== pendingTypingIdRef.current));
+      pendingTypingIdRef.current = null;
+    }
+    setIsGenerating(false);
+    // Clear input to ensure smooth transition to microphone
+    setInputValue('');
+  };
+
   const handleSendMessage = () => {
-    if (!inputValue.trim()) return;
+    if (!inputValue.trim() || isGenerating) return;
 
     const userMessage: Message = {
       id: uid(),
@@ -138,6 +228,9 @@ export const ChatModule: React.FC<ChatModuleProps> = ({ className = '', shouldAu
 
     // Append user message
     setMessages(prev => [...prev, userMessage]);
+
+    // Set generating state
+    setIsGenerating(true);
 
     // Add a UNIQUE typing placeholder and remember its id
     const typingId = `typing-${uid()}`;
@@ -156,31 +249,28 @@ export const ChatModule: React.FC<ChatModuleProps> = ({ className = '', shouldAu
     scrollToBottom();
 
     // Replace typing bubble in-place
-    setTimeout(() => {
+    generationTimeoutRef.current = setTimeout(() => {
       const assistantMessage = simulateAssistantResponse();
 
       setMessages(prev => {
-        const idx = prev.findIndex(m => m.id === pendingTypingIdRef.current);
-        if (idx === -1) {
-          // Fallback: if user sent again fast and typing got removed somehow, just append
-          return [...prev, assistantMessage];
-        }
-        const next = prev.slice();
-        next[idx] = assistantMessage; // in-place replacement
-        return next;
+        // Filter out ALL typing messages and add the new response
+        const filteredMessages = prev.filter(m => !m.id.startsWith('typing-'));
+        return [...filteredMessages, assistantMessage];
       });
 
-      // clear the ref if it belongs to this turn
-      if (pendingTypingIdRef.current === typingId) {
-        pendingTypingIdRef.current = null;
-      }
+      // Clear the pending ref
+      pendingTypingIdRef.current = null;
+
+      // Clear generating state
+      setIsGenerating(false);
+      generationTimeoutRef.current = null;
     }, 1200);
 
     setInputValue('');
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !isGenerating) {
       e.preventDefault();
       handleSendMessage();
     }
@@ -275,11 +365,6 @@ export const ChatModule: React.FC<ChatModuleProps> = ({ className = '', shouldAu
       <div className="p-4">
         <div className="max-w-3xl mx-auto">
           <div className="relative flex items-center">
-            <style jsx>{`
-              textarea::-webkit-scrollbar { display: none; }
-              textarea { -ms-overflow-style: none; scrollbar-width: none; }
-            `}</style>
-
             <textarea
               ref={inputRef}
               value={inputValue}
@@ -291,27 +376,66 @@ export const ChatModule: React.FC<ChatModuleProps> = ({ className = '', shouldAu
               style={{ minHeight: '44px', maxHeight: '120px' }}
             />
 
-            {/* Voice button (stub) */}
+            {/* Microphone/Send/Stop button - Fixed position and size */}
             <button
-              className="absolute right-12 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
-              aria-label="Voice input"
-              title="Voice input"
+              onClick={
+                isGenerating
+                  ? handleStopGeneration
+                  : inputValue.trim()
+                    ? handleSendMessage
+                    : undefined
+              }
+              disabled={!isGenerating && !inputValue.trim()}
+              className={`absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full transition-all duration-300 ease-in-out ${
+                isGenerating || inputValue.trim()
+                  ? 'bg-gray-800 text-white hover:bg-gray-900 shadow-sm scale-100'
+                  : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100 scale-100'
+              }`}
+              aria-label={
+                isGenerating
+                  ? "Stop generating"
+                  : inputValue.trim()
+                    ? "Send message"
+                    : "Voice input"
+              }
+              title={
+                !isGenerating && !inputValue.trim()
+                  ? "Voice input"
+                  : undefined
+              }
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-              </svg>
-            </button>
+              <div className="relative w-full h-full flex items-center justify-center">
+                {/* Stop icon with fade transition */}
+                <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${
+                  isGenerating ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                }`}>
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                    <rect x="6" y="6" width="12" height="12" rx="1" />
+                  </svg>
+                </div>
 
-            {/* Send */}
-            <button
-              onClick={handleSendMessage}
-              disabled={!inputValue.trim()}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-gray-600 disabled:text-gray-300 disabled:cursor-not-allowed transition-colors"
-              aria-label="Send message"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
+                {/* Send icon with fade transition */}
+                <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${
+                  !isGenerating && inputValue.trim() ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                }`}>
+                  <svg
+                    className="w-4 h-4 rotate-90"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                  </svg>
+                </div>
+
+                {/* Microphone icon with fade transition */}
+                <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${
+                  !isGenerating && !inputValue.trim() ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                }`}>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                  </svg>
+                </div>
+              </div>
             </button>
           </div>
         </div>

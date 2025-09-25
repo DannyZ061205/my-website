@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, startTransition } from 'react';
 import { TodoModule } from '@/components/todo/TodoModule';
 import { CalendarModule } from '@/components/calendar/CalendarModule';
-import { ChatModule } from '@/components/chat/ChatModule';
+import { ChatModule, type Message } from '@/components/chat/ChatModule';
 import { EventEditor } from '@/components/event-editor/EventEditor';
 import { SettingsPanel } from '@/components/settings/SettingsPanel';
 import { CalendarEvent } from '@/types';
@@ -54,6 +54,10 @@ function ChronosAppContent() {
   const [transitionType, setTransitionType] = useState<'slide' | 'fade' | 'zoom'>('slide');
   const [rightContentTransitioning, setRightContentTransitioning] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+
+  // Chat state - persistent across merged/unmerged panels
+  const [chatMessages, setChatMessages] = useState<Message[]>([]);
+  const [chatInputValue, setChatInputValue] = useState('');
 
   // Merged state - when both separators are in the middle
   const [panelsMerged, setPanelsMerged] = useState(false);
@@ -151,8 +155,7 @@ function ChronosAppContent() {
   const mergedResizeRef = useRef<HTMLDivElement>(null);
   const [isResizingLeft, setIsResizingLeft] = useState(false);
   const [isResizingRight, setIsResizingRight] = useState(false);
-  const [leftSeparatorClicked, setLeftSeparatorClicked] = useState(false);
-  const [rightSeparatorClicked, setRightSeparatorClicked] = useState(false);
+  // Removed unused separator clicked states - animation no longer needed
   const [isResizingMerged, setIsResizingMerged] = useState(false);
   const [deletingEventIds, setDeletingEventIds] = useState<Set<string>>(new Set());
 
@@ -164,8 +167,7 @@ function ChronosAppContent() {
   const [rightPanelAutoOpened, setRightPanelAutoOpened] = useState(false);
 
   // Double-click tracking for separators
-  const lastLeftSeparatorClick = useRef<number>(0);
-  const lastRightSeparatorClick = useRef<number>(0);
+  // Removed old separator click refs - now using lastLeftClickRef and lastRightClickRef
   const lastMergedSeparatorClick = useRef<number>(0);
 
 
@@ -195,62 +197,7 @@ function ChronosAppContent() {
   };
 
   // Handle double-click on left separator
-  const handleLeftSeparatorClick = () => {
-    const now = Date.now();
-    const timeSinceLastClick = now - lastLeftSeparatorClick.current;
-
-    // Show click animation
-    setLeftSeparatorClicked(true);
-    setTimeout(() => setLeftSeparatorClicked(false), 200);
-
-    if (timeSinceLastClick < 300) {
-      // Double-click detected - toggle panel
-      setShowLeftPanel(!showLeftPanel);
-      if (showLeftPanel) {
-        setLeftPanelCollapsing(true);
-        setTimeout(() => {
-          setLeftPanelCollapsing(false);
-          setLeftPanelHidden(true);
-        }, 300);
-      } else {
-        setLeftPanelHidden(false);
-        setLeftPanelExpanding(true);
-        setTimeout(() => setLeftPanelExpanding(false), 300);
-      }
-      lastLeftSeparatorClick.current = 0;
-    } else {
-      lastLeftSeparatorClick.current = now;
-    }
-  };
-
-  // Handle double-click on right separator
-  const handleRightSeparatorClick = () => {
-    const now = Date.now();
-    const timeSinceLastClick = now - lastRightSeparatorClick.current;
-
-    // Show click animation
-    setRightSeparatorClicked(true);
-    setTimeout(() => setRightSeparatorClicked(false), 200);
-
-    if (timeSinceLastClick < 300) {
-      // Double-click detected - toggle panel
-      setShowRightPanel(!showRightPanel);
-      if (showRightPanel) {
-        setRightPanelCollapsing(true);
-        setTimeout(() => {
-          setRightPanelCollapsing(false);
-          setRightPanelHidden(true);
-        }, 300);
-      } else {
-        setRightPanelHidden(false);
-        setRightPanelExpanding(true);
-        setTimeout(() => setRightPanelExpanding(false), 300);
-      }
-      lastRightSeparatorClick.current = 0;
-    } else {
-      lastRightSeparatorClick.current = now;
-    }
-  };
+  // Removed unused separator click handlers - double-click is now handled in onMouseDown
 
   // Handle arrow double-tap for left panel
   const handleLeftArrowClick = () => {
@@ -312,6 +259,14 @@ function ChronosAppContent() {
     // If this was the selected event, close the editor immediately
     if (selectedEvent?.id === eventId) {
       setSelectedEvent(null);
+
+      // If we auto-opened the right panel for this event, close it
+      if (rightPanelAutoOpened) {
+        setShowRightPanel(false);
+        setRightPanelHidden(true);
+        setRightPanelWidth(0);
+        setRightPanelAutoOpened(false);
+      }
     }
 
     // Wait for the animation to complete before actually deleting
@@ -655,7 +610,10 @@ function ChronosAppContent() {
               <div className={`absolute inset-0 transition-all duration-300 ${
                 !selectedEvent ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'
               }`}>
-                <ChatModule className="h-full" shouldAutoFocus={false} />
+                <ChatModule
+                  className="h-full"
+                  shouldAutoFocus={false}
+                />
               </div>
 
               {/* EventEditor with fade in animation */}
@@ -831,10 +789,10 @@ function ChronosAppContent() {
                         'scale(1)',
               opacity: leftPanelHidden ? 0 : 1
             }}
-            className="flex-shrink-0 origin-left overflow-hidden bg-white relative"
+            className="h-full flex-shrink-0 origin-left overflow-hidden bg-white relative"
           >
             {showLeftPanel && (
-              <div className="h-full flex flex-col">
+              <div className="h-full flex flex-col min-h-0">
                 <TodoModule className="flex-1" />
 
                 {/* Profile Button at Bottom */}
@@ -876,8 +834,10 @@ function ChronosAppContent() {
                   // Check for double-click
                   const now = Date.now();
                   if (now - lastLeftClickRef.current < 300) {
-                    // Double-click detected - restore to default
+                    // Double-click detected - restore to default position
                     setLeftPanelWidth(DEFAULT_LEFT_WIDTH);
+                    setShowLeftPanel(true); // Ensure panel is visible
+                    setLeftPanelHidden(false);
                     lastLeftClickRef.current = 0;
                     return;
                   }
@@ -886,7 +846,6 @@ function ChronosAppContent() {
                   setIsResizingLeft(true);
                   setDragStartedAsMerged(false); // Track that drag started from unmerged state
                 }}
-                onClick={handleLeftSeparatorClick}
               />
               <div className="w-px bg-gray-200 h-full relative">
                 <div className={`absolute inset-y-0 left-1/2 -translate-x-1/2 transition-all ${
@@ -985,8 +944,10 @@ function ChronosAppContent() {
                   // Check for double-click
                   const now = Date.now();
                   if (now - lastRightClickRef.current < 300) {
-                    // Double-click detected - restore to default
+                    // Double-click detected - restore to default position
                     setRightPanelWidth(DEFAULT_RIGHT_WIDTH);
+                    setShowRightPanel(true); // Ensure panel is visible
+                    setRightPanelHidden(false);
                     lastRightClickRef.current = 0;
                     return;
                   }
@@ -996,7 +957,6 @@ function ChronosAppContent() {
                   setDragStartedAsMerged(false); // Track that drag started from unmerged state
                   setRightPanelAutoOpened(false); // User manually interacted with it
                 }}
-                onClick={handleRightSeparatorClick}
               />
             </div>
           )}
@@ -1039,35 +999,37 @@ function ChronosAppContent() {
                         'scale(1)',
               opacity: rightPanelHidden ? 0 : 1
             }}
-            className="flex-shrink-0 origin-right bg-white"
+            className="h-full flex-shrink-0 origin-right bg-white overflow-hidden"
           >
-            {showRightPanel && (
-              <>
-                {console.log('=== Right Panel Render ===', {
-                  showRightPanel,
-                  selectedEvent,
-                  hasSelectedEvent: !!selectedEvent
-                })}
-                <div className="relative h-full overflow-hidden">
-                  {/* ChatModule with fade/slide animation */}
-                  <div className={`absolute inset-0 transition-all duration-300 ease-in-out ${
-                    !selectedEvent
-                      ? 'opacity-100 translate-x-0'
-                      : 'opacity-0 -translate-x-4 pointer-events-none'
-                  }`}>
-                    <ChatModule className="h-full" shouldAutoFocus={false} />
-                  </div>
+            <div className={`h-full flex flex-col min-h-0 ${(!showRightPanel || rightPanelWidth <= 0) ? 'invisible' : 'visible'}`}>
+              {console.log('=== Right Panel Render ===', {
+                showRightPanel,
+                selectedEvent,
+                hasSelectedEvent: !!selectedEvent
+              })}
+              <div className="relative flex-1 min-h-0 overflow-hidden">
+                {/* ChatModule with fade/slide animation */}
+                <div className={`absolute inset-0 transition-all duration-300 ease-in-out ${
+                  !selectedEvent
+                    ? 'opacity-100 translate-x-0'
+                    : 'opacity-0 -translate-x-4 pointer-events-none'
+                }`}>
+                  <ChatModule
+                    className="h-full"
+                    shouldAutoFocus={false}
+                  />
+                </div>
 
-                  {/* EventEditor with fade/slide animation */}
-                  <div className={`absolute inset-0 transition-all duration-300 ease-in-out ${
-                    selectedEvent
-                      ? 'opacity-100 translate-x-0'
-                      : 'opacity-0 translate-x-4 pointer-events-none'
-                  }`}>
-                    {selectedEvent && (
-                      <EventEditor
-                        className="h-full"
-                        event={selectedEvent}
+                {/* EventEditor with fade/slide animation */}
+                <div className={`absolute inset-0 transition-all duration-300 ease-in-out ${
+                  selectedEvent
+                    ? 'opacity-100 translate-x-0'
+                    : 'opacity-0 translate-x-4 pointer-events-none'
+                }`}>
+                  {selectedEvent && (
+                    <EventEditor
+                      className="h-full"
+                      event={selectedEvent}
                         onSave={(updatedEvent, updateOption) => {
                           // Check if this is just a color preview (boolean true)
                           const isPreview = updateOption === true;
@@ -1198,12 +1160,11 @@ function ChronosAppContent() {
                             setSelectedEvent(null);
                           }
                         }}
-                      />
-                    )}
-                  </div>
+                    />
+                  )}
                 </div>
-              </>
-            )}
+              </div>
+            </div>
           </div>
         </>
       )}
