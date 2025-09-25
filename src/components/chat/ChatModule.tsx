@@ -7,6 +7,7 @@ import React, {
   useLayoutEffect,
   useCallback,
 } from 'react';
+import { useChat } from '@/contexts/ChatContext';
 
 interface ChatModuleProps {
   className?: string;
@@ -106,36 +107,50 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
   inputValue: controlledInputValue,
   onInputChange
 }) => {
-  // Use controlled state if provided, otherwise use internal state
+  // Try to use ChatContext if available
+  let contextValue: any;
+  try {
+    contextValue = useChat();
+  } catch (e) {
+    // Not wrapped in ChatProvider, use local state
+    contextValue = null;
+  }
+
+  // Use controlled state if provided, otherwise use context if available, otherwise use internal state
   const [internalMessages, setInternalMessages] = useState<Message[]>([]);
   const [internalInputValue, setInternalInputValue] = useState('');
 
-  const messages = controlledMessages ?? internalMessages;
-  const inputValue = controlledInputValue ?? internalInputValue;
+  const messages = controlledMessages ?? contextValue?.messages ?? internalMessages;
+  const inputValue = controlledInputValue ?? contextValue?.inputValue ?? internalInputValue;
 
   const setMessages = useCallback((value: Message[] | ((prev: Message[]) => Message[])) => {
     if (onMessagesChange) {
       // Controlled mode
       if (typeof value === 'function') {
         // For function updates, we need to get the current messages
-        const currentMessages = controlledMessages ?? internalMessages;
+        const currentMessages = controlledMessages ?? contextValue?.messages ?? internalMessages;
         onMessagesChange(value(currentMessages));
       } else {
         onMessagesChange(value);
       }
+    } else if (contextValue?.setMessages) {
+      // Context mode
+      contextValue.setMessages(value);
     } else {
       // Uncontrolled mode
       setInternalMessages(value);
     }
-  }, [controlledMessages, internalMessages, onMessagesChange]);
+  }, [controlledMessages, internalMessages, onMessagesChange, contextValue]);
 
   const setInputValue = useCallback((value: string) => {
     if (onInputChange) {
       onInputChange(value);
+    } else if (contextValue?.setInputValue) {
+      contextValue.setInputValue(value);
     } else {
       setInternalInputValue(value);
     }
-  }, [onInputChange]);
+  }, [onInputChange, contextValue]);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
 
