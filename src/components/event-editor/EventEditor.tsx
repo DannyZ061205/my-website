@@ -86,6 +86,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editedEventRef = useRef<CalendarEvent | null>(null);
   const historyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isEditingDescriptionRef = useRef(false);
+  const tempDescriptionRef = useRef('');
 
   // Refs for portal dropdown triggers
   const startTimeRef = useRef<HTMLElement>(null!);
@@ -199,10 +201,12 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
     [onSave, event, isRecurringEvent]
   );
 
-  // Keep ref in sync with state
+  // Keep refs in sync with state
   useEffect(() => {
     editedEventRef.current = editedEvent;
-  }, [editedEvent]);
+    isEditingDescriptionRef.current = isEditingDescription;
+    tempDescriptionRef.current = tempDescription;
+  }, [editedEvent, isEditingDescription, tempDescription]);
 
   // Helper to check if event has been modified
   const hasEventBeenModified = useCallback((evt: CalendarEvent): boolean => {
@@ -400,14 +404,17 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
       const target = e.target as Node;
       const targetElement = target as HTMLElement;
 
-      // If we're editing description, ignore all outside clicks
-      if (isEditingDescription) {
-        return;
-      }
-
       // If click is inside the main editor, ignore
       if (editorRef.current && editorRef.current.contains(target)) {
         return;
+      }
+
+      // If we're editing description and clicking outside, save it first
+      if (isEditingDescription) {
+        updateEvent('description', tempDescription);
+        setIsEditingDescription(false);
+        setTempDescription('');
+        // Don't return - continue to check if we should close the editor
       }
 
       // If click is inside any picker dropdown (now rendered in portals), ignore
@@ -515,20 +522,23 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
       if (saveTimeout.current) clearTimeout(saveTimeout.current);
 
       // Save description if it was being edited when unmounting
-      if (isEditingDescription && tempDescription && tempDescription !== editedEvent?.description) {
-        if (editedEvent) {
-          const updatedEvent = { ...editedEvent, description: tempDescription };
+      // Use refs to get the current values at unmount time
+      if (isEditingDescriptionRef.current && tempDescriptionRef.current) {
+        const currentEvent = editedEventRef.current;
+        if (currentEvent && tempDescriptionRef.current !== currentEvent.description) {
+          const updatedEvent = { ...currentEvent, description: tempDescriptionRef.current };
           delete updatedEvent.justCreated;
           onSave(updatedEvent);
         }
       }
 
       // Clear live event data when component unmounts
-      if (editedEvent) {
-        clearLiveEvent(editedEvent.id);
+      const currentEvent = editedEventRef.current;
+      if (currentEvent) {
+        clearLiveEvent(currentEvent.id);
       }
     };
-  }, [editedEvent, clearLiveEvent, isEditingDescription, tempDescription, onSave]);
+  }, [onSave, clearLiveEvent]); // Include stable dependencies
 
   // Set cursor position to end when editing description
   useEffect(() => {
@@ -703,41 +713,6 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
     <div
       ref={editorRef}
       className={`${className} bg-white h-full border-l ${isNewEvent && !editedEvent.title ? 'border-yellow-400 animate-pulse' : 'border-gray-200'} p-4 relative z-40 flex flex-col overflow-hidden`}
-      onMouseDown={(e) => {
-        // Check if we're editing the description
-        if (!isEditingDescription) return;
-
-        const target = e.target as HTMLElement;
-
-        // Don't save if clicking on interactive elements
-        if (
-          target.tagName === 'BUTTON' ||
-          target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'A' ||
-          target.closest('button') ||
-          target.closest('input') ||
-          target.closest('textarea') ||
-          target.closest('a') ||
-          target.closest('.formatting-toolbar') || // Don't save when clicking formatting toolbar
-          target.closest('[contenteditable]')
-        ) {
-          return;
-        }
-
-        // Check if clicking on the EventEditor itself or any non-interactive child
-        const isBlankSpace =
-          target === e.currentTarget || // Clicked on EventEditor itself
-          target.closest('.event-editor-content') || // Clicked on content area
-          (!target.closest('.description-editor') && !target.closest('.fullscreen-editor')); // Clicked outside editor area
-
-        if (isBlankSpace) {
-          e.preventDefault(); // Prevent focus loss from textarea
-          updateEvent('description', tempDescription);
-          setIsEditingDescription(false);
-          setTempDescription('');
-        }
-      }}
     >
       <div className="flex-1 flex flex-col min-h-0">
         {/* Header with close button */}
