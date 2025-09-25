@@ -1045,7 +1045,7 @@ div[class*="Calendar"]::-webkit-scrollbar:horizontal,
 @keyframes descriptionFadeIn {
   from {
     opacity: 0;
-    transform: scale(0.98) translateY(2px);
+    transform: scale(0.99) translateY(4px);
   }
   to {
     opacity: 1;
@@ -1103,7 +1103,34 @@ div[class*="Calendar"]::-webkit-scrollbar:horizontal,
 }
 
 .animate-descriptionFadeIn {
-  animation: descriptionFadeIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: descriptionFadeIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Fullscreen editor sliding animations */
+.fullscreen-editor-container {
+  position: absolute;
+  inset: 0;
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fullscreen-editor-active {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.fullscreen-editor-hidden {
+  transform: translateX(-100%);
+  opacity: 0;
+}
+
+.fullscreen-preview-active {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.fullscreen-preview-hidden {
+  transform: translateX(100%);
+  opacity: 0;
 }
 
 .animate-scaleIn {

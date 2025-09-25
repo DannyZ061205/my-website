@@ -713,6 +713,35 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
     <div
       ref={editorRef}
       className={`${className} bg-white h-full border-l ${isNewEvent && !editedEvent.title ? 'border-yellow-400 animate-pulse' : 'border-gray-200'} p-4 relative z-40 flex flex-col overflow-hidden`}
+      onClick={(e) => {
+        // If editing description and clicking on blank space within the editor, save it
+        if (isEditingDescription) {
+          const target = e.target as HTMLElement;
+
+          // Don't save if clicking on any part of the description editing area
+          const isInDescriptionEditor = target.closest('.border-blue-200') ||
+                                       target.closest('[class*="description"]') ||
+                                       target.closest('textarea') ||
+                                       target.closest('button');
+
+          if (isInDescriptionEditor) {
+            return; // Don't save when clicking within the description editor
+          }
+
+          // Check if we clicked on truly blank space (editor background or non-interactive areas)
+          const isBlankSpace = target === editorRef.current ||
+                               (target.classList.contains('flex-1') && !target.closest('.border-blue-200')) ||
+                               (target.classList.contains('flex') && !target.closest('.border-blue-200')) ||
+                               (target.classList.contains('flex-col') && !target.closest('.border-blue-200'));
+
+          if (isBlankSpace) {
+            // Save description just like Cmd+Enter
+            updateEvent('description', tempDescription);
+            setIsEditingDescription(false);
+            setTempDescription('');
+          }
+        }
+      }}
     >
       <div className="flex-1 flex flex-col min-h-0">
         {/* Header with close button */}
@@ -1837,10 +1866,11 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
         <div className="flex-1 flex flex-col mt-2 min-h-0">
           <div className="relative w-full flex-1 flex flex-col min-h-0">
             {isEditingDescription ? (
-              <div className="w-full flex-1 flex flex-col animate-descriptionFadeIn">
-                <div className="w-full flex-1 border border-gray-300 rounded-lg overflow-hidden flex flex-col shadow-sm">
+              <div className="w-full flex-1 flex flex-col">
+                <div className="w-full flex-1 border-2 border-blue-200 rounded-xl overflow-hidden flex flex-col shadow-lg bg-white animate-descriptionFadeIn">
                   {/* Formatting Toolbar */}
-                  <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-200 bg-gray-50">
+                  <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+                    <div className="flex items-center gap-1">
                     {/* Heading buttons */}
                     <button
                       type="button"
@@ -2076,6 +2106,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                     >
                       #
                     </button>
+                    </div>
                   </div>
 
                   {/* Textarea */}
@@ -2313,17 +2344,28 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                         }
                       }
                     }}
-                    className="w-full flex-1 text-gray-700 bg-transparent px-4 py-3 outline-none focus:ring-0 resize-none text-sm min-h-0 overflow-y-auto"
-                    placeholder="Write in markdown..."
+                    className="w-full flex-1 text-gray-700 bg-transparent px-4 py-3 outline-none focus:ring-0 resize-none text-sm min-h-0 overflow-y-auto font-mono"
+                    placeholder="Write in markdown • Use ChatGPT's copy button to preserve formatting..."
                   />
                 </div>
-                <div className="flex items-center justify-between mt-2">
+                <div className="flex items-center justify-between mt-3 px-1">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
+                      // Save cursor position before expanding
+                      const cursorPos = descriptionTextareaRef.current?.selectionStart || 0;
+                      const cursorEnd = descriptionTextareaRef.current?.selectionEnd || 0;
                       setIsFullScreen(true);
+                      // Restore cursor position after fullscreen textarea renders
+                      setTimeout(() => {
+                        const fullscreenTextarea = document.querySelector('.fullscreen-textarea') as HTMLTextAreaElement;
+                        if (fullscreenTextarea) {
+                          fullscreenTextarea.focus();
+                          fullscreenTextarea.setSelectionRange(cursorPos, cursorEnd);
+                        }
+                      }, 50);
                     }}
-                    className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900 transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all duration-200 font-medium"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
@@ -2346,7 +2388,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                         setIsEditingDescription(false);
                         setTempDescription('');
                       }}
-                      className="px-3 py-1 text-xs text-gray-600 hover:text-gray-900 transition-colors"
+                      className="px-4 py-1.5 text-xs text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-200 font-medium"
                     >
                       Cancel
                     </button>
@@ -2358,57 +2400,58 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                         setIsEditingDescription(false);
                         setTempDescription('');
                       }}
-                      className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center gap-1"
-                      title="Cmd+Enter to save"
+                      className="px-4 py-1.5 text-xs bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 font-medium flex items-center gap-1.5 shadow-sm"
+                      title="Save description (Cmd+Enter)"
                     >
                       Confirm
-                      <span className="text-[10px] opacity-75">(⌘↵)</span>
+                      <span className="text-[10px] opacity-90 font-normal">(⌘↵)</span>
                     </button>
                   </div>
                 </div>
               </div>
             ) : (
-              <div
-                onMouseDown={(e) => {
-                  // Prevent any default mouse behavior
-                  e.stopPropagation();
-                  e.nativeEvent.stopImmediatePropagation();
-                }}
-                onPointerDown={(e) => {
-                  // Also stop pointer events
-                  e.stopPropagation();
-                  e.nativeEvent.stopImmediatePropagation();
-                }}
-                onClick={(e) => {
-                  // Stop all propagation
-                  e.stopPropagation();
-                  e.nativeEvent.stopImmediatePropagation();
-                  e.preventDefault();
+              <div className="w-full flex-1 animate-descriptionFadeIn">
+                <div
+                  onMouseDown={(e) => {
+                    // Prevent any default mouse behavior
+                    e.stopPropagation();
+                    e.nativeEvent.stopImmediatePropagation();
+                  }}
+                  onPointerDown={(e) => {
+                    // Also stop pointer events
+                    e.stopPropagation();
+                    e.nativeEvent.stopImmediatePropagation();
+                  }}
+                  onClick={(e) => {
+                    // Stop all propagation
+                    e.stopPropagation();
+                    e.nativeEvent.stopImmediatePropagation();
+                    e.preventDefault();
 
-                  // Prevent re-entering edit mode immediately after canceling
-                  if (Date.now() - cancelClickTimeRef.current < 100) {
-                    return;
-                  }
-
-                  // Enter edit mode
-                  setIsEditingDescription(true);
-                  const initialDescription = editedEvent.description || '';
-                  setTempDescription(initialDescription);
-                  // Initialize history when starting to edit
-                  setDescriptionHistory([initialDescription]);
-                  setDescriptionHistoryIndex(0);
-                  // Focus the textarea after a short delay to ensure it's rendered
-                  setTimeout(() => {
-                    if (descriptionTextareaRef.current) {
-                      descriptionTextareaRef.current.focus();
+                    // Prevent re-entering edit mode immediately after canceling
+                    if (Date.now() - cancelClickTimeRef.current < 100) {
+                      return;
                     }
-                  }, 50);
-                }}
-                className="w-full flex-1 text-gray-700 border border-gray-200 hover:border-gray-300 rounded-lg px-4 py-3 cursor-text transition-all duration-200 overflow-y-auto markdown-content hover:bg-gray-50 hover:shadow-sm max-h-full"
-                tabIndex={-1}
-                role="button"
-                aria-label="Click to edit description"
-              >
+
+                    // Enter edit mode
+                    setIsEditingDescription(true);
+                    const initialDescription = editedEvent.description || '';
+                    setTempDescription(initialDescription);
+                    // Initialize history when starting to edit
+                    setDescriptionHistory([initialDescription]);
+                    setDescriptionHistoryIndex(0);
+                    // Focus the textarea after a short delay to ensure it's rendered
+                    setTimeout(() => {
+                      if (descriptionTextareaRef.current) {
+                        descriptionTextareaRef.current.focus();
+                      }
+                    }, 50);
+                  }}
+                  className="group w-full h-full bg-gradient-to-br from-gray-50 via-white to-gray-50 border border-gray-200 hover:border-blue-300 rounded-xl px-4 py-3.5 cursor-text transition-all duration-300 overflow-y-auto markdown-content hover:shadow-md hover:from-blue-50/30 hover:via-white hover:to-blue-50/30 relative"
+                  tabIndex={-1}
+                  role="button"
+                  aria-label="Click to edit description"
+                >
                 {editedEvent.description ? (
                   <div
                     className="prose prose-sm max-w-none event-description-content"
@@ -2431,11 +2474,33 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                     </ReactMarkdown>
                   </div>
                 ) : (
-                  <span className="text-gray-500">
-                    Add description
-                    <span className="block text-xs mt-1">(supports markdown)</span>
-                  </span>
+                  <div className="flex flex-col items-center justify-center py-4 text-center">
+                    <div className="mb-3">
+                      <svg className="w-10 h-10 text-gray-300 group-hover:text-blue-400 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <span className="text-gray-600 font-medium text-sm">
+                      Click to add description
+                    </span>
+                    <span className="text-xs text-gray-400 mt-2 leading-relaxed max-w-[280px]">
+                      Supports Markdown • Tables • Lists • Code blocks
+                    </span>
+                    <div className="flex items-center gap-1.5 mt-3 px-3 py-1.5 bg-gradient-to-r from-green-50 to-blue-50 rounded-full border border-green-200/50">
+                      <svg className="w-3.5 h-3.5 text-green-600" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M21.731 2.269a2.625 2.625 0 00-3.712 0l-1.157 1.157 3.712 3.712 1.157-1.157a2.625 2.625 0 000-3.712zM19.513 8.199l-3.712-3.712-8.4 8.4a5.25 5.25 0 00-1.32 2.214l-.8 2.685a.75.75 0 00.933.933l2.685-.8a5.25 5.25 0 002.214-1.32l8.4-8.4z"/>
+                        <path d="M5.25 5.25a3 3 0 00-3 3v10.5a3 3 0 003 3h10.5a3 3 0 003-3V13.5a.75.75 0 00-1.5 0v5.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5V8.25a1.5 1.5 0 011.5-1.5h5.25a.75.75 0 000-1.5H5.25z"/>
+                      </svg>
+                      <span className="text-[10px] font-medium text-green-700">
+                        Works with ChatGPT
+                      </span>
+                      <span className="text-[10px] text-gray-500">
+                        • Use copy button for markdown
+                      </span>
+                    </div>
+                  </div>
                 )}
+                </div>
               </div>
             )}
           </div>
@@ -2461,31 +2526,52 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
 
                       {/* Simple mode toggle - floating in top right corner */}
                       <div className={`fixed top-4 right-4 flex items-center gap-2 z-50 transition-all duration-1000 ease-in-out ${showFullscreenControls ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`}>
-                        <button
-                          onClick={() => setFullScreenMode(fullScreenMode === 'editor' ? 'preview' : 'editor')}
-                          className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors flex items-center gap-2"
-                        >
-                          {fullScreenMode === 'editor' ? (
-                            <>
+                        <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 relative p-1">
+                          {/* Sliding indicator background */}
+                          <div
+                            className="absolute top-1 bottom-1 bg-gray-900 rounded-lg transition-all duration-300 ease-out"
+                            style={{
+                              width: fullScreenMode === 'editor' ? '80px' : '105px',
+                              left: fullScreenMode === 'editor' ? '4px' : '88px'
+                            }}
+                          />
+                          <div className="relative flex items-center">
+                            <button
+                              id="fullscreen-edit-btn"
+                              onClick={() => setFullScreenMode('editor')}
+                              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-200 flex items-center gap-2 relative z-10 ${
+                                fullScreenMode === 'editor'
+                                  ? 'text-white'
+                                  : 'text-gray-600 hover:text-gray-900'
+                              }`}
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                              Edit
+                            </button>
+                            <button
+                              id="fullscreen-preview-btn"
+                              onClick={() => setFullScreenMode('preview')}
+                              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-200 flex items-center gap-2 relative z-10 ${
+                                fullScreenMode === 'preview'
+                                  ? 'text-white'
+                                  : 'text-gray-600 hover:text-gray-900'
+                              }`}
+                            >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                               </svg>
                               Preview
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                              Edit
-                            </>
-                          )}
-                        </button>
+                            </button>
+                          </div>
+                        </div>
 
                         <button
                           onClick={() => setIsFullScreen(false)}
-                          className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                          className="p-2.5 bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-all duration-200"
+                          title="Exit fullscreen (Esc)"
                         >
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -2495,7 +2581,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
 
                       {/* Formatting toolbar for editor mode */}
                       {fullScreenMode === 'editor' && (
-                        <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-100 px-4 py-2 flex items-center gap-1 z-40 transition-all duration-1000 ease-in-out ${showFullscreenControls ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}>
+                        <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 px-2 py-2 flex items-center gap-0.5 z-40 transition-all duration-1000 ease-in-out ${showFullscreenControls ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}>
                           {/* Heading buttons */}
                           <button
                             type="button"
@@ -2518,7 +2604,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                                 }, 0);
                               }
                             }}
-                            className="px-3 py-1.5 text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
+                            className="px-3 py-1.5 text-sm font-semibold text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-all duration-200"
+                            title="Heading 1"
                           >
                             H1
                           </button>
@@ -2543,7 +2630,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                                 }, 0);
                               }
                             }}
-                            className="px-3 py-1.5 text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
+                            className="px-3 py-1.5 text-sm font-semibold text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-all duration-200"
+                            title="Heading 2"
                           >
                             H2
                           </button>
@@ -2568,12 +2656,13 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                                 }, 0);
                               }
                             }}
-                            className="px-3 py-1.5 text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
+                            className="px-3 py-1.5 text-sm font-semibold text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-all duration-200"
+                            title="Heading 3"
                           >
                             H3
                           </button>
 
-                          <div className="w-px h-6 bg-gray-200 mx-1" />
+                          <div className="w-px h-5 bg-gray-300 mx-1" />
 
                           {/* Text formatting buttons */}
                           <button
@@ -2593,7 +2682,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                                 }, 0);
                               }
                             }}
-                            className="px-3 py-1.5 text-sm font-bold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
+                            className="w-9 h-9 text-sm font-bold text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-all duration-200 flex items-center justify-center"
+                            title="Bold"
                           >
                             B
                           </button>
@@ -2614,7 +2704,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                                 }, 0);
                               }
                             }}
-                            className="px-3 py-1.5 text-sm italic text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
+                            className="w-9 h-9 text-sm italic text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-all duration-200 flex items-center justify-center"
+                            title="Italic"
                           >
                             I
                           </button>
@@ -2635,12 +2726,13 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                                 }, 0);
                               }
                             }}
-                            className="px-3 py-1.5 text-sm underline text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
+                            className="w-9 h-9 text-sm underline text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-all duration-200 flex items-center justify-center"
+                            title="Underline"
                           >
                             U
                           </button>
 
-                          <div className="w-px h-6 bg-gray-200 mx-1" />
+                          <div className="w-px h-5 bg-gray-300 mx-1" />
 
                           {/* List buttons */}
                           <button
@@ -2664,7 +2756,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                                 }, 0);
                               }
                             }}
-                            className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
+                            className="w-9 h-9 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-all duration-200 flex items-center justify-center"
                             title="Bullet list"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2695,7 +2787,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                                 }, 0);
                               }
                             }}
-                            className="px-3 py-1.5 text-sm font-bold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
+                            className="w-9 h-9 text-sm font-bold text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-all duration-200 flex items-center justify-center"
                             title="Numbered list"
                           >
                             #
@@ -2704,9 +2796,13 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                       )}
 
                       {/* Main content area - clean and focused */}
-                      <div className="flex-1 overflow-hidden relative h-full">
-                        {fullScreenMode === 'editor' ? (
-                          <>
+                      <div className="flex-1 relative h-full overflow-hidden">
+                        <div className="relative w-full h-full overflow-hidden">
+                          {/* Editor Mode */}
+                          <div className={`absolute inset-0 ${
+                            fullScreenMode === 'editor' ? 'block' : 'hidden'
+                          }`}>
+                            <>
                             {/* Subtle fade at top for editor mode */}
                             <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-white/80 to-transparent pointer-events-none z-10" />
 
@@ -2768,10 +2864,14 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                             }}
                             className="fullscreen-textarea w-full h-full px-[max(2rem,calc((100vw-80rem)/2))] pt-12 pb-12 text-gray-800 bg-transparent outline-none resize-none font-mono text-lg leading-relaxed max-w-full"
                             placeholder="Start writing..."
-                            autoFocus
                           />
                           </>
-                        ) : (
+                          </div>
+
+                          {/* Preview Mode */}
+                          <div className={`absolute inset-0 ${
+                            fullScreenMode === 'preview' ? 'block' : 'hidden'
+                          }`}>
                           <div className="relative w-full h-full flex">
                             {/* Left Slider */}
                             <div
@@ -2864,32 +2964,36 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                               <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-white/60 to-transparent pointer-events-none z-10" />
                             </div>
                           </div>
-                        )}
+                          </div>
+                        </div>
                       </div>
 
                       {/* Minimal footer - just save/cancel */}
-                      <div className={`fixed bottom-4 left-1/2 transform -translate-x-1/2 flex items-center justify-center gap-3 z-30 bg-white/90 backdrop-blur-sm rounded-xl shadow-lg px-4 py-2 border border-gray-100 transition-all duration-1000 ease-in-out ${showFullscreenControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
-                        <button
-                          onClick={() => {
-                            setIsFullScreen(false);
-                            setFullScreenMode('editor');
-                          }}
-                          className="px-5 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={() => {
-                            updateEvent('description', tempDescription);
-                            setIsFullScreen(false);
-                            setIsEditingDescription(false);
-                            setTempDescription('');
-                            setFullScreenMode('editor');
-                          }}
-                          className="px-6 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-all"
-                        >
-                          Save
-                        </button>
+                      <div className={`fixed bottom-4 left-1/2 transform -translate-x-1/2 flex items-center justify-center gap-3 z-30 transition-all duration-1000 ease-in-out ${showFullscreenControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
+                        <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 px-2 py-2 flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              setIsFullScreen(false);
+                              setFullScreenMode('editor');
+                            }}
+                            className="px-5 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all duration-200"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => {
+                              updateEvent('description', tempDescription);
+                              setIsFullScreen(false);
+                              setIsEditingDescription(false);
+                              setTempDescription('');
+                              setFullScreenMode('editor');
+                            }}
+                            className="px-5 py-2 text-sm font-medium bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-sm flex items-center gap-2"
+                          >
+                            Save Description
+                            <span className="text-[10px] opacity-90 font-normal">(⌘↵)</span>
+                          </button>
+                        </div>
                       </div>
                   </div>
                 </div>

@@ -865,17 +865,13 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
       setHideWelcome(true);
     }
 
-    // Clear search UI but keep results for highlighting
-    if (searchQuery || isSearchFocused || isSearchHovered) {
+    // Clear search completely when starting a new drag
+    if (searchQuery || isSearchFocused || isSearchHovered || searchResults.length > 0) {
       setSearchQuery('');
-      // Keep searchResults to maintain the red border
+      setSearchResults([]); // Clear search results to remove red border
       setIsSearchFocused(false);
       setIsSearchHovered(false);
-    }
-
-    // Clear focused event only if not from a search
-    if (searchResults.length === 0) {
-      setFocusedEventId(null);
+      setFocusedEventId(null); // Clear focused event
     }
 
     // SNAP START TIME DOWN to grid -> fixes the "+15 min" start drift
