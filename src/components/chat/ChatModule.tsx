@@ -47,12 +47,12 @@ const MessageBubble: React.FC<{
   }, [shouldAnimate, onAnimationComplete, isUser, isTyping, words.length]);
 
   return (
-    <div className={`group mb-6 ${isUser ? 'flex justify-end' : 'flex justify-start'}`}>
+    <div className={`group ${isUser ? 'flex justify-end' : 'flex justify-start'}`}>
       <div className={isUser ? "max-w-[70%]" : "w-full"}>
         {isUser ? (
           <div
             className="inline-block px-4 py-2.5 rounded-2xl text-sm bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-sm"
-            style={{ wordBreak: 'break-all', overflowWrap: 'anywhere', maxWidth: '100%' }}
+            style={{ wordBreak: 'break-word', overflowWrap: 'anywhere', maxWidth: '100%' }}
           >
             {message.content}
           </div>
@@ -132,6 +132,9 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
   // Local tracking for animated messages if not using context
   const [localAnimatedIds, setLocalAnimatedIds] = useState<Set<string>>(new Set());
 
+  // State for viewing history
+  const [viewingHistory, setViewingHistory] = useState(false);
+
   // Use controlled state if provided, otherwise use context if available, otherwise use internal state
   const [internalMessages, setInternalMessages] = useState<Message[]>([]);
   const [internalInputValue, setInternalInputValue] = useState('');
@@ -167,12 +170,12 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
       setInternalInputValue(value);
     }
   }, [onInputChange, contextValue]);
-  const [isAtBottom, setIsAtBottom] = useState(true);
+
   const [isGenerating, setIsGenerating] = useState(false);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  // Removed bottomAnchorRef as we now scroll within container only
+  const historyContainerRef = useRef<HTMLDivElement>(null);
 
   // holds the current "typing message id" so we can replace it in-place
   const pendingTypingIdRef = useRef<string | null>(null);
@@ -192,28 +195,20 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
     }
   }, [inputValue]);
 
-  const scrollToBottom = useCallback((smooth = true) => {
-    // Use rAF so DOM has applied height changes
-    requestAnimationFrame(() => {
-      // Only scroll within the messages container, not the whole page
-      if (messagesContainerRef.current) {
-        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-      }
-    });
+  // Scroll to top when viewing history
+  const scrollToTop = useCallback(() => {
+    if (historyContainerRef.current) {
+      historyContainerRef.current.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      });
+    }
   }, []);
 
-  const handleScroll = useCallback(() => {
-    const el = messagesContainerRef.current;
-    if (!el) return;
-    const THRESHOLD_PX = 96;
-    const distanceFromBottom = el.scrollHeight - (el.scrollTop + el.clientHeight);
-    setIsAtBottom(distanceFromBottom <= THRESHOLD_PX);
+  // Jump back to latest
+  const jumpToLatest = useCallback(() => {
+    setViewingHistory(false);
   }, []);
-
-  // Keep pinned when new content arrives only if user is near bottom
-  useLayoutEffect(() => {
-    if (isAtBottom) scrollToBottom(false);
-  }, [messages, isAtBottom, scrollToBottom]);
 
   const simulateAssistantResponse = (): Message => {
     const responses = [
@@ -223,12 +218,11 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
       "I'm ready to help you organize your time and tasks. What's on your mind?",
     ];
     return {
-      id: `msg-${uid()}`, // Ensure ID doesn't start with 'typing-'
+      id: `msg-${uid()}`,
       content: responses[Math.floor(Math.random() * responses.length)],
       sender: 'assistant',
       timestamp: new Date(),
     };
-    // In your real app, replace the above with your API call / streaming handler.
   };
 
   const handleStopGeneration = () => {
@@ -243,7 +237,7 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
       pendingTypingIdRef.current = null;
     }
     setIsGenerating(false);
-    // Clear input to ensure smooth transition to microphone
+    // Clear input to ensure smooth transition
     setInputValue('');
   };
 
@@ -260,6 +254,9 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
     // Append user message
     setMessages(prev => [...prev, userMessage]);
 
+    // Auto-hide history when sending new message
+    setViewingHistory(false);
+
     // Set generating state
     setIsGenerating(true);
 
@@ -274,10 +271,6 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
       timestamp: new Date(),
     };
     setMessages(prev => [...prev, typingMessage]);
-
-    // Force pin to bottom after send
-    setIsAtBottom(true);
-    scrollToBottom();
 
     // Replace typing bubble in-place
     generationTimeoutRef.current = setTimeout(() => {
@@ -307,14 +300,29 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
     }
   };
 
+  // Get latest exchange (last user message and assistant response)
+  const getLatestExchange = () => {
+    if (messages.length === 0) return [];
+
+    const latestMessages = [];
+    // Get the last user message and any assistant messages after it
+    for (let i = messages.length - 1; i >= 0; i--) {
+      latestMessages.unshift(messages[i]);
+      if (messages[i].sender === 'user' && i > 0 && messages[i-1].sender === 'assistant') {
+        break; // Found a complete exchange
+      }
+      if (latestMessages.length >= 2) break; // Show at most 2 messages in latest view
+    }
+    return latestMessages;
+  };
+
+  const latestExchange = getLatestExchange();
+  const hasHistory = messages.length > latestExchange.length;
+
   return (
     <div className={`h-full bg-white flex flex-col ${className}`}>
-      {/* Messages Area */}
-      <div
-        className="relative flex-1 min-h-0 overflow-y-auto"  // <-- min-h-0 is important inside flex
-        ref={messagesContainerRef}
-        onScroll={handleScroll}
-      >
+      {/* Messages Area with latest-on-top design */}
+      <div className="relative flex-1 overflow-hidden">
         {messages.length === 0 ? (
           <div className="h-full flex flex-col justify-center px-6">
             <div className="max-w-3xl w-full mx-auto">
@@ -368,50 +376,117 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
           </div>
         ) : (
           <>
-            <div className="max-w-3xl mx-auto px-6 pt-6 pb-6">
-              {messages.map(m => {
-                const animatedIds = contextValue?.animatedMessageIds ?? localAnimatedIds;
-                const shouldAnimate = !m.id.startsWith('typing-') &&
-                                     m.sender === 'assistant' &&
-                                     !animatedIds.has(m.id);
+            {/* Latest Exchange View - Pinned to Top */}
+            <div
+              className={`absolute inset-x-0 top-0 bg-white transition-transform duration-300 ${
+                viewingHistory ? '-translate-y-full' : 'translate-y-0'
+              }`}
+              style={{ zIndex: 10 }}
+            >
+              <div className="max-w-3xl mx-auto px-6 pt-6 pb-4">
+                <div className="space-y-4">
+                  {latestExchange.map(m => {
+                    const animatedIds = contextValue?.animatedMessageIds ?? localAnimatedIds;
+                    const shouldAnimate = !m.id.startsWith('typing-') &&
+                                         m.sender === 'assistant' &&
+                                         !animatedIds.has(m.id);
 
-                return (
-                  <MessageBubble
-                    key={m.id}
-                    message={m}
-                    shouldAnimate={shouldAnimate}
-                    onAnimationComplete={() => {
-                      if (contextValue?.markMessageAnimated) {
-                        contextValue.markMessageAnimated(m.id);
-                      } else {
-                        setLocalAnimatedIds(prev => new Set(prev).add(m.id));
-                      }
-                    }}
-                  />
-                );
-              })}
+                    return (
+                      <MessageBubble
+                        key={m.id}
+                        message={m}
+                        shouldAnimate={shouldAnimate}
+                        onAnimationComplete={() => {
+                          if (contextValue?.markMessageAnimated) {
+                            contextValue.markMessageAnimated(m.id);
+                          } else {
+                            setLocalAnimatedIds(prev => new Set(prev).add(m.id));
+                          }
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* View History Button */}
+              {hasHistory && !viewingHistory && (
+                <div className="absolute top-2 left-1/2 -translate-x-1/2">
+                  <button
+                    onClick={() => setViewingHistory(true)}
+                    className="px-3 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-full border border-gray-200 bg-white shadow-sm transition-all"
+                  >
+                    ↑ View history ({messages.length - latestExchange.length} messages)
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* Jump to latest chip */}
-            {!isAtBottom && (
-              <div className="pointer-events-none absolute inset-x-0 bottom-20 flex justify-center">
+            {/* History View - Hidden by default, slides down when viewing */}
+            <div
+              ref={historyContainerRef}
+              className={`absolute inset-0 bg-white overflow-y-auto transition-transform duration-300 ${
+                viewingHistory ? 'translate-y-0' : 'translate-y-full'
+              }`}
+              style={{ zIndex: 5 }}
+            >
+              <div className="max-w-3xl mx-auto px-6 py-6">
+                <div className="space-y-4">
+                  {messages.map((m, index) => {
+                    const animatedIds = contextValue?.animatedMessageIds ?? localAnimatedIds;
+                    const shouldAnimate = !m.id.startsWith('typing-') &&
+                                         m.sender === 'assistant' &&
+                                         !animatedIds.has(m.id);
+
+                    return (
+                      <div key={m.id} className={index >= messages.length - latestExchange.length ? 'bg-blue-50 p-2 rounded-lg' : ''}>
+                        <MessageBubble
+                          message={m}
+                          shouldAnimate={shouldAnimate}
+                          onAnimationComplete={() => {
+                            if (contextValue?.markMessageAnimated) {
+                              contextValue.markMessageAnimated(m.id);
+                            } else {
+                              setLocalAnimatedIds(prev => new Set(prev).add(m.id));
+                            }
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Jump to Latest Button */}
+              <div className="sticky bottom-4 flex justify-center">
                 <button
-                  onClick={() => {
-                    scrollToBottom();
-                    setIsAtBottom(true);
-                  }}
-                  className="pointer-events-auto px-3 py-1.5 rounded-full bg-white border border-gray-200 shadow-sm text-xs text-gray-700 hover:bg-gray-50"
+                  onClick={jumpToLatest}
+                  className="px-4 py-2 text-sm bg-white border border-gray-200 rounded-full shadow-lg hover:bg-gray-50 transition-all"
                 >
-                  Jump to latest
+                  ↓ Jump to latest
                 </button>
               </div>
-            )}
+            </div>
           </>
         )}
       </div>
 
+      {/* ARIA Live Region for Screen Readers */}
+      <div
+        className="sr-only"
+        role="log"
+        aria-live="polite"
+        aria-label="Chat messages"
+      >
+        {messages.slice(-2).map(m => (
+          <div key={m.id}>
+            {m.sender}: {m.content}
+          </div>
+        ))}
+      </div>
+
       {/* Input Area */}
-      <div className="p-4 bg-white">
+      <div className="p-4 bg-white border-t">
         <div className="max-w-3xl mx-auto">
           <div className="relative flex items-center">
             <textarea
@@ -423,9 +498,10 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
               rows={1}
               className="w-full pl-5 py-3 pr-24 bg-gray-50 border border-gray-200 rounded-3xl focus:outline-none focus:ring-2 focus:ring-gray-300 focus:border-transparent text-sm text-gray-900 placeholder-gray-500 resize-none overflow-y-auto"
               style={{ minHeight: '44px', maxHeight: '120px' }}
+              aria-label="Message input"
             />
 
-            {/* Microphone/Send/Stop button - Fixed position and size */}
+            {/* Send/Stop button */}
             <button
               onClick={
                 isGenerating
@@ -454,7 +530,7 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
               }
             >
               <div className="relative w-full h-full flex items-center justify-center">
-                {/* Stop icon with fade transition */}
+                {/* Stop icon */}
                 <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${
                   isGenerating ? 'opacity-100' : 'opacity-0 pointer-events-none'
                 }`}>
@@ -463,7 +539,7 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
                   </svg>
                 </div>
 
-                {/* Send icon with fade transition */}
+                {/* Send icon */}
                 <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${
                   !isGenerating && inputValue.trim() ? 'opacity-100' : 'opacity-0 pointer-events-none'
                 }`}>
@@ -476,7 +552,7 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
                   </svg>
                 </div>
 
-                {/* Microphone icon with fade transition */}
+                {/* Microphone icon */}
                 <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${
                   !isGenerating && !inputValue.trim() ? 'opacity-100' : 'opacity-0 pointer-events-none'
                 }`}>
