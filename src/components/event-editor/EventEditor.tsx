@@ -623,6 +623,22 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
         clearInterval(recordingIntervalRef.current);
         recordingIntervalRef.current = null;
       }
+
+      // If not already editing description, enter edit mode
+      if (!isEditingDescription) {
+        setIsEditingDescription(true);
+        const initialDescription = editedEvent?.description || '';
+        setTempDescription(initialDescription);
+        setDescriptionHistory([initialDescription]);
+        setDescriptionHistoryIndex(0);
+
+        // Focus the textarea after a short delay
+        setTimeout(() => {
+          if (descriptionTextareaRef.current) {
+            descriptionTextareaRef.current.focus();
+          }
+        }, 100);
+      }
     }
   };
 
@@ -630,6 +646,15 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
     if (!hasRecording || audioChunksRef.current.length === 0) return;
 
     setIsTranscribing(true);
+
+    // If not already editing description, enter edit mode
+    if (!isEditingDescription) {
+      setIsEditingDescription(true);
+      const initialDescription = editedEvent?.description || '';
+      setTempDescription(initialDescription);
+      setDescriptionHistory([initialDescription]);
+      setDescriptionHistoryIndex(0);
+    }
 
     // Simulate transcription (in real app, send to transcription API)
     setTimeout(() => {
@@ -649,16 +674,23 @@ Next Steps:
 Team will reconvene next week to review progress`;
 
       // Add transcript to description
-      const currentDescription = isEditingDescription ? tempDescription : localDescription;
+      const currentDescription = tempDescription || localDescription;
       const newDescription = currentDescription ?
         `${currentDescription}\n\n---\n\n${mockTranscript}` :
         mockTranscript;
 
-      if (isEditingDescription) {
-        setTempDescription(newDescription);
-      } else {
-        updateEvent('description', newDescription);
-      }
+      // Update the temp description in edit mode
+      setTempDescription(newDescription);
+
+      // Focus the textarea
+      setTimeout(() => {
+        if (descriptionTextareaRef.current) {
+          descriptionTextareaRef.current.focus();
+          // Move cursor to end
+          const length = descriptionTextareaRef.current.value.length;
+          descriptionTextareaRef.current.setSelectionRange(length, length);
+        }
+      }, 100);
 
       setIsTranscribing(false);
       setHasRecording(false);
@@ -2696,8 +2728,14 @@ Team will reconvene next week to review progress`;
                 <div className="flex items-center justify-end gap-2 mt-3 px-1">
                   {!isRecording && !hasRecording && (
                     <button
-                      onClick={(e) => {
+                      onMouseDown={(e) => {
+                        e.preventDefault();
                         e.stopPropagation();
+                      }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
                         startRecording();
                       }}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 hover:text-red-600 hover:bg-red-50 border border-gray-200 hover:border-red-200 rounded-lg transition-all duration-200 font-medium"
@@ -2712,8 +2750,14 @@ Team will reconvene next week to review progress`;
 
                   {isRecording && (
                     <button
-                      onClick={(e) => {
+                      onMouseDown={(e) => {
+                        e.preventDefault();
                         e.stopPropagation();
+                      }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
                         stopRecording();
                       }}
                       className="flex items-center gap-2 px-3 py-1.5 text-xs text-white bg-red-500 hover:bg-red-600 rounded-lg transition-all duration-200 font-medium animate-pulse"
@@ -2729,8 +2773,14 @@ Team will reconvene next week to review progress`;
                   {hasRecording && !isTranscribing && (
                     <>
                       <button
-                        onClick={(e) => {
+                        onMouseDown={(e) => {
+                          e.preventDefault();
                           e.stopPropagation();
+                        }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.nativeEvent.stopImmediatePropagation();
                           setHasRecording(false);
                           setRecordingTime(0);
                           audioChunksRef.current = [];
@@ -2740,8 +2790,14 @@ Team will reconvene next week to review progress`;
                         Discard
                       </button>
                       <button
-                        onClick={(e) => {
+                        onMouseDown={(e) => {
+                          e.preventDefault();
                           e.stopPropagation();
+                        }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.nativeEvent.stopImmediatePropagation();
                           transcribeRecording();
                         }}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-lg transition-all duration-200 font-medium shadow-sm"
