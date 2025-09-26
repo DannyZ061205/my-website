@@ -437,7 +437,7 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
               disabled={!isGenerating && !inputValue.trim()}
               className={`absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full transition-all duration-300 ease-in-out ${
                 isGenerating || inputValue.trim()
-                  ? 'bg-gray-800 text-white hover:bg-gray-900 shadow-sm scale-100'
+                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 shadow-md scale-100'
                   : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100 scale-100'
               }`}
               aria-label={
