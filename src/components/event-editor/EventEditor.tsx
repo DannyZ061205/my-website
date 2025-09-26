@@ -12,6 +12,9 @@ import { EditRecurringPropertiesModal } from '../calendar/EditRecurringPropertie
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+// Global store for description histories that persist across editor sessions
+const descriptionHistoriesStore = new Map<string, { history: string[], index: number }>();
+
 interface EventEditorProps {
   event: CalendarEvent | null;
   onSave: (event: CalendarEvent, updateOption?: 'single' | 'following' | 'all' | boolean) => void;
@@ -366,8 +369,23 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
         setLocalDescription('');
         setTempDescription('');
         setIsEditingDescription(false);
+        // Clear any stored history for new events
+        if (event.id) {
+          descriptionHistoriesStore.delete(event.id);
+        }
       } else {
         setLocalDescription(event.description || '');
+
+        // Restore description history if it exists
+        if (event.id && descriptionHistoriesStore.has(event.id)) {
+          const stored = descriptionHistoriesStore.get(event.id)!;
+          setDescriptionHistory(stored.history);
+          setDescriptionHistoryIndex(stored.index);
+        } else {
+          // Initialize with current description if no history exists
+          setDescriptionHistory([event.description || '']);
+          setDescriptionHistoryIndex(0);
+        }
       }
       // If event has a meeting value, set the flag
       if (event.meeting) {
@@ -566,6 +584,16 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
     };
   }, [onSave, clearLiveEvent]); // Include stable dependencies
 
+  // Save description history to store whenever it changes
+  useEffect(() => {
+    if (editedEvent?.id && descriptionHistory.length > 0) {
+      descriptionHistoriesStore.set(editedEvent.id, {
+        history: descriptionHistory,
+        index: descriptionHistoryIndex
+      });
+    }
+  }, [editedEvent?.id, descriptionHistory, descriptionHistoryIndex]);
+
   // Set cursor position to end when editing description
   useEffect(() => {
     if (isEditingDescription && descriptionTextareaRef.current) {
@@ -629,8 +657,20 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
         setIsEditingDescription(true);
         const initialDescription = editedEvent?.description || '';
         setTempDescription(initialDescription);
-        setDescriptionHistory([initialDescription]);
-        setDescriptionHistoryIndex(0);
+
+        // Restore history if it exists, otherwise initialize
+        if (editedEvent?.id && descriptionHistoriesStore.has(editedEvent.id)) {
+          const stored = descriptionHistoriesStore.get(editedEvent.id)!;
+          setDescriptionHistory(stored.history);
+          setDescriptionHistoryIndex(stored.index);
+          // Use the last state from history as temp description
+          if (stored.history[stored.index] !== undefined) {
+            setTempDescription(stored.history[stored.index]);
+          }
+        } else {
+          setDescriptionHistory([initialDescription]);
+          setDescriptionHistoryIndex(0);
+        }
 
         // Focus the textarea after a short delay
         setTimeout(() => {
@@ -652,8 +692,20 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
       setIsEditingDescription(true);
       const initialDescription = editedEvent?.description || '';
       setTempDescription(initialDescription);
-      setDescriptionHistory([initialDescription]);
-      setDescriptionHistoryIndex(0);
+
+      // Restore history if it exists, otherwise initialize
+      if (editedEvent?.id && descriptionHistoriesStore.has(editedEvent.id)) {
+        const stored = descriptionHistoriesStore.get(editedEvent.id)!;
+        setDescriptionHistory(stored.history);
+        setDescriptionHistoryIndex(stored.index);
+        // Use the last state from history as temp description
+        if (stored.history[stored.index] !== undefined) {
+          setTempDescription(stored.history[stored.index]);
+        }
+      } else {
+        setDescriptionHistory([initialDescription]);
+        setDescriptionHistoryIndex(0);
+      }
     }
 
     // Simulate transcription (in real app, send to transcription API)
@@ -2678,9 +2730,21 @@ Team will reconvene next week to review progress`;
                     setIsEditingDescription(true);
                     const initialDescription = editedEvent.description || '';
                     setTempDescription(initialDescription);
-                    // Initialize history when starting to edit
-                    setDescriptionHistory([initialDescription]);
-                    setDescriptionHistoryIndex(0);
+
+                    // Restore history if it exists, otherwise initialize
+                    if (editedEvent.id && descriptionHistoriesStore.has(editedEvent.id)) {
+                      const stored = descriptionHistoriesStore.get(editedEvent.id)!;
+                      setDescriptionHistory(stored.history);
+                      setDescriptionHistoryIndex(stored.index);
+                      // Use the last state from history as temp description
+                      if (stored.history[stored.index] !== undefined) {
+                        setTempDescription(stored.history[stored.index]);
+                      }
+                    } else {
+                      // Initialize history when starting to edit
+                      setDescriptionHistory([initialDescription]);
+                      setDescriptionHistoryIndex(0);
+                    }
                     // Focus the textarea after a short delay to ensure it's rendered
                     setTimeout(() => {
                       if (descriptionTextareaRef.current) {
