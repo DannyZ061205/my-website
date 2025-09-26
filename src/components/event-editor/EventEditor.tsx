@@ -40,6 +40,12 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   const [descriptionHistory, setDescriptionHistory] = useState<string[]>([]);
   const [descriptionHistoryIndex, setDescriptionHistoryIndex] = useState(-1);
   const [mounted, setMounted] = useState(false);
+
+  // Recording states
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [hasRecording, setHasRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   // Mouse movement detection for fullscreen UI
@@ -88,6 +94,9 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   const historyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isEditingDescriptionRef = useRef(false);
   const tempDescriptionRef = useRef('');
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   // Refs for portal dropdown triggers
   const startTimeRef = useRef<HTMLElement>(null!);
@@ -530,6 +539,14 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
     return () => {
       if (saveTimeout.current) clearTimeout(saveTimeout.current);
 
+      // Clean up recording
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+
       // Save description if it was being edited when unmounting
       // Use refs to get the current values at unmount time
       if (isEditingDescriptionRef.current && tempDescriptionRef.current) {
@@ -565,6 +582,96 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
       return () => cancelAnimationFrame(focusFrame);
     }
   }, [isEditingDescription]);
+
+  // Recording functions
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        audioChunksRef.current.push(event.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        setHasRecording(true);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+
+      // Start timer
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.error('Failed to start recording:', err);
+      alert('Could not access microphone. Please check your permissions.');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
+      }
+    }
+  };
+
+  const transcribeRecording = async () => {
+    if (!hasRecording || audioChunksRef.current.length === 0) return;
+
+    setIsTranscribing(true);
+
+    // Simulate transcription (in real app, send to transcription API)
+    setTimeout(() => {
+      const mockTranscript = `Meeting Notes - ${new Date().toLocaleDateString()}
+
+Key Discussion Points:
+• Discussed quarterly objectives and key results
+• Reviewed project timeline and deliverables
+• Identified potential blockers and mitigation strategies
+
+Action Items:
+- Complete design mockups by end of week
+- Schedule follow-up meeting with stakeholders
+- Update project documentation
+
+Next Steps:
+Team will reconvene next week to review progress`;
+
+      // Add transcript to description
+      const currentDescription = isEditingDescription ? tempDescription : localDescription;
+      const newDescription = currentDescription ?
+        `${currentDescription}\n\n---\n\n${mockTranscript}` :
+        mockTranscript;
+
+      if (isEditingDescription) {
+        setTempDescription(newDescription);
+      } else {
+        updateEvent('description', newDescription);
+      }
+
+      setIsTranscribing(false);
+      setHasRecording(false);
+      setRecordingTime(0);
+      audioChunksRef.current = [];
+    }, 2000);
+  };
+
+  const formatRecordingTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   if (!editedEvent) return null;
 
@@ -2366,29 +2473,96 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                   />
                 </div>
                 <div className="flex items-center justify-between mt-3 px-1">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      // Save cursor position before expanding
-                      const cursorPos = descriptionTextareaRef.current?.selectionStart || 0;
-                      const cursorEnd = descriptionTextareaRef.current?.selectionEnd || 0;
-                      setIsFullScreen(true);
-                      // Restore cursor position after fullscreen textarea renders
-                      setTimeout(() => {
-                        const fullscreenTextarea = document.querySelector('.fullscreen-textarea') as HTMLTextAreaElement;
-                        if (fullscreenTextarea) {
-                          fullscreenTextarea.focus();
-                          fullscreenTextarea.setSelectionRange(cursorPos, cursorEnd);
-                        }
-                      }, 50);
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all duration-200 font-medium"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-                    </svg>
-                    Expand
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // Save cursor position before expanding
+                        const cursorPos = descriptionTextareaRef.current?.selectionStart || 0;
+                        const cursorEnd = descriptionTextareaRef.current?.selectionEnd || 0;
+                        setIsFullScreen(true);
+                        // Restore cursor position after fullscreen textarea renders
+                        setTimeout(() => {
+                          const fullscreenTextarea = document.querySelector('.fullscreen-textarea') as HTMLTextAreaElement;
+                          if (fullscreenTextarea) {
+                            fullscreenTextarea.focus();
+                            fullscreenTextarea.setSelectionRange(cursorPos, cursorEnd);
+                          }
+                        }, 50);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all duration-200 font-medium"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                      </svg>
+                      Expand
+                    </button>
+
+                    {/* Recording buttons in edit mode */}
+                    {!isRecording && !hasRecording && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          startRecording();
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
+                        title="Record audio note"
+                      >
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M12 15c1.66 0 3-1.34 3-3V6c0-1.66-1.34-3-3-3S9 4.34 9 6v6c0 1.66 1.34 3 3 3z"/>
+                          <path d="M17 12c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                        </svg>
+                      </button>
+                    )}
+
+                    {isRecording && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          stopRecording();
+                        }}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-white bg-red-500 hover:bg-red-600 rounded-lg transition-all duration-200 animate-pulse"
+                      >
+                        <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                        {formatRecordingTime(recordingTime)}
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                          <rect x="8" y="8" width="8" height="8" rx="1" />
+                        </svg>
+                      </button>
+                    )}
+
+                    {hasRecording && !isTranscribing && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          transcribeRecording();
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-lg transition-all duration-200"
+                        title="Transcribe recording"
+                      >
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M20.5 2h-17A1.5 1.5 0 002 3.5v17A1.5 1.5 0 003.5 22h17a1.5 1.5 0 001.5-1.5v-17A1.5 1.5 0 0020.5 2zM8 13.65l1.75-3.48a.5.5 0 01.45-.27h.05a.5.5 0 01.44.32l1.2 3.85 1.92-7.72a.5.5 0 01.49-.38.5.5 0 01.48.4l1.28 6.88 1.08-2.16a.5.5 0 01.45-.28H19v1h-1.08l-1.56 3.12a.5.5 0 01-.47.28h-.02a.5.5 0 01-.46-.34l-1.31-7-1.93 7.73a.5.5 0 01-.48.38h-.01a.5.5 0 01-.48-.35l-1.38-4.42L8.52 14.3a.5.5 0 01-.95-.08l-.77-3.08H5v-1h2.3a.5.5 0 01.49.38L8 11.37z"/>
+                        </svg>
+                        AI
+                      </button>
+                    )}
+
+                    {isTranscribing && (
+                      <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-blue-600">
+                        <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        AI...
+                      </div>
+                    )}
+                  </div>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -2517,6 +2691,79 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                     </div>
                   </div>
                 )}
+
+                {/* Recording buttons - show below content */}
+                <div className="flex items-center justify-end gap-2 mt-3 px-1">
+                  {!isRecording && !hasRecording && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startRecording();
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 hover:text-red-600 hover:bg-red-50 border border-gray-200 hover:border-red-200 rounded-lg transition-all duration-200 font-medium"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 15c1.66 0 3-1.34 3-3V6c0-1.66-1.34-3-3-3S9 4.34 9 6v6c0 1.66 1.34 3 3 3z"/>
+                        <path d="M17 12c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                      </svg>
+                      Start Recording
+                    </button>
+                  )}
+
+                  {isRecording && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        stopRecording();
+                      }}
+                      className="flex items-center gap-2 px-3 py-1.5 text-xs text-white bg-red-500 hover:bg-red-600 rounded-lg transition-all duration-200 font-medium animate-pulse"
+                    >
+                      <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                      Recording {formatRecordingTime(recordingTime)}
+                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                        <rect x="6" y="6" width="12" height="12" rx="2" />
+                      </svg>
+                    </button>
+                  )}
+
+                  {hasRecording && !isTranscribing && (
+                    <>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setHasRecording(false);
+                          setRecordingTime(0);
+                          audioChunksRef.current = [];
+                        }}
+                        className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-100 border border-gray-200 rounded-lg transition-all duration-200 font-medium"
+                      >
+                        Discard
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          transcribeRecording();
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-lg transition-all duration-200 font-medium shadow-sm"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M20.5 2h-17A1.5 1.5 0 002 3.5v17A1.5 1.5 0 003.5 22h17a1.5 1.5 0 001.5-1.5v-17A1.5 1.5 0 0020.5 2zM8 13.65l1.75-3.48a.5.5 0 01.45-.27h.05a.5.5 0 01.44.32l1.2 3.85 1.92-7.72a.5.5 0 01.49-.38.5.5 0 01.48.4l1.28 6.88 1.08-2.16a.5.5 0 01.45-.28H19v1h-1.08l-1.56 3.12a.5.5 0 01-.47.28h-.02a.5.5 0 01-.46-.34l-1.31-7-1.93 7.73a.5.5 0 01-.48.38h-.01a.5.5 0 01-.48-.35l-1.38-4.42L8.52 14.3a.5.5 0 01-.95-.08l-.77-3.08H5v-1h2.3a.5.5 0 01.49.38L8 11.37z"/>
+                        </svg>
+                        AI Transcribe
+                      </button>
+                    </>
+                  )}
+
+                  {isTranscribing && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-blue-600">
+                      <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Transcribing...
+                    </div>
+                  )}
+                </div>
                 </div>
               </div>
             )}
