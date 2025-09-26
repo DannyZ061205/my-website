@@ -578,18 +578,18 @@ function ChronosAppContent() {
           <div className="relative group h-full">
             <div
               ref={mergedResizeRef}
-              className="absolute inset-y-0 -left-2 w-4 cursor-ew-resize z-10 flex items-center justify-center hover:bg-gray-200/50 transition-colors"
+              className={`absolute inset-y-0 -left-2 w-4 cursor-ew-resize z-10 ${
+                isResizingMerged
+                  ? ''
+                  : 'hover:bg-blue-50/30'
+              }`}
               onMouseDown={(e) => {
                 setIsResizingMerged(true);
                 setDragStartedAsMerged(true); // Track that drag started from already merged state
                 e.preventDefault();
               }}
               onClick={handleMergedSeparatorClick}
-            >
-              <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                <div className="w-1 h-8 bg-gray-400 rounded-full" />
-              </div>
-            </div>
+            />
             <div className="w-px bg-gray-200 h-full relative">
               <div className={`absolute inset-y-0 left-1/2 -translate-x-1/2 transition-all ${
                 isResizingMerged
