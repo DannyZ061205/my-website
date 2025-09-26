@@ -2534,9 +2534,15 @@ Team will reconvene next week to review progress`;
                     {!isRecording && !hasRecording && (
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
+                        onMouseDown={(e) => {
                           e.preventDefault();
+                          e.stopPropagation();
+                          e.nativeEvent.stopImmediatePropagation();
+                        }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.nativeEvent.stopImmediatePropagation();
                           startRecording();
                         }}
                         className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
@@ -2552,9 +2558,15 @@ Team will reconvene next week to review progress`;
                     {isRecording && (
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
+                        onMouseDown={(e) => {
                           e.preventDefault();
+                          e.stopPropagation();
+                          e.nativeEvent.stopImmediatePropagation();
+                        }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.nativeEvent.stopImmediatePropagation();
                           stopRecording();
                         }}
                         className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-white bg-red-500 hover:bg-red-600 rounded-lg transition-all duration-200 animate-pulse"
@@ -2570,9 +2582,15 @@ Team will reconvene next week to review progress`;
                     {hasRecording && !isTranscribing && (
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
+                        onMouseDown={(e) => {
                           e.preventDefault();
+                          e.stopPropagation();
+                          e.nativeEvent.stopImmediatePropagation();
+                        }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.nativeEvent.stopImmediatePropagation();
                           transcribeRecording();
                         }}
                         className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-lg transition-all duration-200"
@@ -2725,7 +2743,7 @@ Team will reconvene next week to review progress`;
                 )}
 
                 {/* Recording buttons - show below content */}
-                <div className="flex items-center justify-end gap-2 mt-3 px-1">
+                <div className="flex items-center justify-center gap-2 mt-3 px-1">
                   {!isRecording && !hasRecording && (
                     <button
                       onMouseDown={(e) => {
