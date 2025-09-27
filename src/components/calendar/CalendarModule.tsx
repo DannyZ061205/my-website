@@ -1128,6 +1128,9 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
           // Immediately select the new event for editing
           console.log('New event created:', newEvent);
 
+          // Set as focused/selected to show selection animation
+          setFocusedEventId(newEvent.id);
+
           // Call onEditEvent to show EventEditor
           console.log('onEditEvent function exists:', !!onEditEvent);
           if (onEditEvent) {
