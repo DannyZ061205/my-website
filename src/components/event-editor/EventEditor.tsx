@@ -53,9 +53,21 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   // Recording states
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [recordings, setRecordings] = useState<Array<{
+    id: string;
+    blob: Blob;
+    duration: number;
+    url: string;
+    transcript?: string;
+    isTranscribing?: boolean;
+    isPlaying?: boolean;
+  }>>([]);
+  const [currentRecordingId, setCurrentRecordingId] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
+  const [playingAudio, setPlayingAudio] = useState<{ [id: string]: HTMLAudioElement }>({});
+  const [showDeleteEventModal, setShowDeleteEventModal] = useState(false);
   const [hasRecording, setHasRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   // Mouse movement detection for fullscreen UI
   const [showFullscreenControls, setShowFullscreenControls] = useState(true); // Start visible
@@ -106,6 +118,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const audioElementsRef = useRef<{ [id: string]: HTMLAudioElement }>({});
 
   // Refs for portal dropdown triggers
   const startTimeRef = useRef<HTMLElement>(null!);
@@ -683,13 +696,58 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
+      const recordingId = Date.now().toString();
+      setCurrentRecordingId(recordingId);
+
       mediaRecorder.ondataavailable = (event) => {
         audioChunksRef.current.push(event.data);
       };
 
       mediaRecorder.onstop = () => {
-        setHasRecording(true);
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const duration = recordingTime;
+
+        // Add new recording to the list
+        setRecordings(prev => [...prev, {
+          id: recordingId,
+          blob: audioBlob,
+          duration: duration,
+          url: audioUrl,
+          transcript: undefined,
+          isTranscribing: false,
+          isPlaying: false
+        }]);
+
+        // Clear temporary recording data
+        audioChunksRef.current = [];
+        setCurrentRecordingId(null);
         stream.getTracks().forEach(track => track.stop());
+
+        // Enter edit mode if not already
+        if (!isEditingDescription) {
+          setIsEditingDescription(true);
+          const initialDescription = editedEvent?.description || '';
+          setTempDescription(initialDescription);
+
+          if (editedEvent?.id && descriptionHistoriesStore.has(editedEvent.id)) {
+            const stored = descriptionHistoriesStore.get(editedEvent.id)!;
+            setDescriptionHistory(stored.history);
+            setDescriptionHistoryIndex(stored.index);
+            if (stored.history[stored.index] !== undefined) {
+              setTempDescription(stored.history[stored.index]);
+            }
+          } else {
+            setDescriptionHistory([initialDescription]);
+            setDescriptionHistoryIndex(0);
+          }
+
+          setTimeout(() => {
+            if (descriptionTextareaRef.current) {
+              descriptionTextareaRef.current.focus();
+            }
+          }, 100);
+        }
       };
 
       mediaRecorder.start();
@@ -715,105 +773,117 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
         clearInterval(recordingIntervalRef.current);
         recordingIntervalRef.current = null;
       }
-
-      // If not already editing description, enter edit mode
-      if (!isEditingDescription) {
-        setIsEditingDescription(true);
-        const initialDescription = editedEvent?.description || '';
-        setTempDescription(initialDescription);
-
-        // Restore history if it exists, otherwise initialize
-        if (editedEvent?.id && descriptionHistoriesStore.has(editedEvent.id)) {
-          const stored = descriptionHistoriesStore.get(editedEvent.id)!;
-          setDescriptionHistory(stored.history);
-          setDescriptionHistoryIndex(stored.index);
-          // Use the last state from history as temp description
-          if (stored.history[stored.index] !== undefined) {
-            setTempDescription(stored.history[stored.index]);
-          }
-        } else {
-          setDescriptionHistory([initialDescription]);
-          setDescriptionHistoryIndex(0);
-        }
-
-        // Focus the textarea after a short delay
-        setTimeout(() => {
-          if (descriptionTextareaRef.current) {
-            descriptionTextareaRef.current.focus();
-          }
-        }, 100);
-      }
     }
   };
 
-  const transcribeRecording = async () => {
-    if (!hasRecording || audioChunksRef.current.length === 0) return;
+  const playRecording = (recordingId: string) => {
+    const recording = recordings.find(r => r.id === recordingId);
+    if (!recording) return;
 
-    setIsTranscribing(true);
-
-    // If not already editing description, enter edit mode
-    if (!isEditingDescription) {
-      setIsEditingDescription(true);
-      const initialDescription = editedEvent?.description || '';
-      setTempDescription(initialDescription);
-
-      // Restore history if it exists, otherwise initialize
-      if (editedEvent?.id && descriptionHistoriesStore.has(editedEvent.id)) {
-        const stored = descriptionHistoriesStore.get(editedEvent.id)!;
-        setDescriptionHistory(stored.history);
-        setDescriptionHistoryIndex(stored.index);
-        // Use the last state from history as temp description
-        if (stored.history[stored.index] !== undefined) {
-          setTempDescription(stored.history[stored.index]);
-        }
-      } else {
-        setDescriptionHistory([initialDescription]);
-        setDescriptionHistoryIndex(0);
-      }
+    // If already playing, stop it
+    if (recording.isPlaying && audioElementsRef.current[recordingId]) {
+      audioElementsRef.current[recordingId].pause();
+      audioElementsRef.current[recordingId].currentTime = 0;
+      setRecordings(prev => prev.map(r =>
+        r.id === recordingId ? { ...r, isPlaying: false } : r
+      ));
+      return;
     }
 
-    // Simulate transcription (in real app, send to transcription API)
-    setTimeout(() => {
-      const mockTranscript = `Meeting Notes - ${new Date().toLocaleDateString()}
+    // Stop any other playing recordings
+    Object.values(audioElementsRef.current).forEach(audio => {
+      audio.pause();
+      audio.currentTime = 0;
+    });
+    setRecordings(prev => prev.map(r => ({ ...r, isPlaying: false })));
 
-Key Discussion Points:
-• Discussed quarterly objectives and key results
-• Reviewed project timeline and deliverables
-• Identified potential blockers and mitigation strategies
+    // Create new audio element if doesn't exist
+    if (!audioElementsRef.current[recordingId]) {
+      audioElementsRef.current[recordingId] = new Audio(recording.url);
+      audioElementsRef.current[recordingId].onended = () => {
+        setRecordings(prev => prev.map(r =>
+          r.id === recordingId ? { ...r, isPlaying: false } : r
+        ));
+      };
+    }
 
-Action Items:
-- Complete design mockups by end of week
-- Schedule follow-up meeting with stakeholders
-- Update project documentation
+    // Play the recording
+    audioElementsRef.current[recordingId].play();
+    setRecordings(prev => prev.map(r =>
+      r.id === recordingId ? { ...r, isPlaying: true } : r
+    ));
+  };
 
-Next Steps:
-Team will reconvene next week to review progress`;
+  const deleteRecording = (recordingId: string) => {
+    // Clean up audio element if exists
+    if (audioElementsRef.current[recordingId]) {
+      audioElementsRef.current[recordingId].pause();
+      delete audioElementsRef.current[recordingId];
+    }
+
+    // Remove from recordings list
+    setRecordings(prev => prev.filter(r => r.id !== recordingId));
+    setShowDeleteModal(null);
+  };
+
+  const transcribeRecording = async (recordingId: string) => {
+    const recording = recordings.find(r => r.id === recordingId);
+    if (!recording) return;
+
+    // Mark as transcribing
+    setRecordings(prev => prev.map(r =>
+      r.id === recordingId ? { ...r, isTranscribing: true } : r
+    ));
+
+    try {
+      // Create form data with the audio blob
+      const formData = new FormData();
+      formData.append('audio', recording.blob, 'recording.webm');
+
+      // Call the transcribe API
+      const response = await fetch('/api/transcribe', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error('Transcription failed');
+      }
+
+      const data = await response.json();
+      const transcript = data.text || '';
+
+      // Update recording with transcript
+      setRecordings(prev => prev.map(r =>
+        r.id === recordingId ? { ...r, transcript, isTranscribing: false } : r
+      ));
 
       // Add transcript to description
       const currentDescription = tempDescription || localDescription;
       const newDescription = currentDescription ?
-        `${currentDescription}\n\n---\n\n${mockTranscript}` :
-        mockTranscript;
+        `${currentDescription}\n\n${transcript}` :
+        transcript;
 
-      // Update the temp description in edit mode
       setTempDescription(newDescription);
 
-      // Focus the textarea
+      // Focus textarea and move cursor to end
       setTimeout(() => {
         if (descriptionTextareaRef.current) {
           descriptionTextareaRef.current.focus();
-          // Move cursor to end
           const length = descriptionTextareaRef.current.value.length;
           descriptionTextareaRef.current.setSelectionRange(length, length);
         }
       }, 100);
 
-      setIsTranscribing(false);
-      setHasRecording(false);
-      setRecordingTime(0);
-      audioChunksRef.current = [];
-    }, 2000);
+    } catch (error) {
+      console.error('Transcription failed:', error);
+      setRecordings(prev => prev.map(r =>
+        r.id === recordingId ? { ...r, isTranscribing: false } : r
+      ));
+      alert('Failed to transcribe audio. Please try again.');
+    }
   };
+
 
   const formatRecordingTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -976,7 +1046,7 @@ Team will reconvene next week to review progress`;
   return (
     <div
       ref={editorRef}
-      className={`${className} bg-white h-full border-l ${isNewEvent && !editedEvent.title ? 'border-yellow-400 animate-pulse' : 'border-gray-200'} p-4 relative z-40 flex flex-col overflow-hidden`}
+      className={`${className} bg-white h-full border-l ${isNewEvent && !editedEvent.title ? 'border-yellow-400 animate-pulse' : 'border-gray-200'} p-4 relative z-40 flex flex-col ${recordings.length > 0 && isEditingDescription ? 'overflow-y-auto' : 'overflow-hidden'}`}
       onClick={(e) => {
         // If editing description and clicking on blank space within the editor, save it
         if (isEditingDescription) {
@@ -1033,10 +1103,18 @@ Team will reconvene next week to review progress`;
                 onSave(eventToSave);
               }
 
+              // Save the local title if changed
+              if (editedEvent && localTitle !== editedEvent.title) {
+                updateEvent('title', localTitle);
+              }
+
               // Disable input after saving new event
               if (editedEvent && editedEvent.justCreated) {
                 setTitleInputEnabled(false);
               }
+
+              // Remove the new event flag when losing focus
+              setIsNewEvent(false);
             }}
             autoFocus={false}
             tabIndex={titleInputEnabled ? 0 : -1}
@@ -1111,14 +1189,6 @@ Team will reconvene next week to review progress`;
                 }
                 onCancel();
               }
-            }}
-            onBlur={() => {
-              // Save the local title if changed
-              if (editedEvent && localTitle !== editedEvent.title) {
-                updateEvent('title', localTitle);
-              }
-              // Remove the new event flag when losing focus
-              setIsNewEvent(false);
             }}
             className={`flex-1 text-xl sm:text-2xl font-semibold bg-transparent border ${isNewEvent && !localTitle ? 'border-yellow-300' : 'border-transparent'} hover:border-gray-200 focus:border-gray-300 rounded-md px-2 sm:px-3 py-1 sm:py-1.5 outline-none focus:ring-0 text-gray-900 placeholder-gray-400 transition-colors min-w-0 truncate focus:overflow-visible focus:text-clip ${!titleInputEnabled ? 'cursor-text hover:bg-gray-50' : ''}`}
             placeholder={isNewEvent ? "Type event name..." : "Event name"}
@@ -1618,7 +1688,7 @@ Team will reconvene next week to review progress`;
                       return (
                         <div className="px-4 py-3 text-center">
                           <p className="text-sm text-gray-500">No matching categories</p>
-                          <p className="text-xs text-gray-400 mt-1">Press Enter to create "{newCategoryInput.trim()}"</p>
+                          <p className="text-xs text-gray-400 mt-1">Press Enter to create &quot;{newCategoryInput.trim()}&quot;</p>
                         </div>
                       );
                     }
@@ -1756,7 +1826,7 @@ Team will reconvene next week to review progress`;
                       return (
                         <div className="px-4 py-3 text-center">
                           <p className="text-sm text-gray-500">No matching locations</p>
-                          <p className="text-xs text-gray-400 mt-1">Press Enter to create "{newLocationInput.trim()}"</p>
+                          <p className="text-xs text-gray-400 mt-1">Press Enter to create &quot;{newLocationInput.trim()}&quot;</p>
                         </div>
                       );
                     }
@@ -2127,14 +2197,13 @@ Team will reconvene next week to review progress`;
         </div>
 
         {/* Description - extends to bottom */}
-        <div className="flex-1 flex flex-col mt-2 min-h-0 overflow-hidden">
-          <div className="relative w-full flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className={`${recordings.length > 0 && isEditingDescription ? 'flex flex-col mt-2' : 'flex-1 flex flex-col mt-2 min-h-0 overflow-hidden'}`}>
+          <div className={`relative w-full ${recordings.length > 0 && isEditingDescription ? 'flex flex-col' : 'flex-1 flex flex-col min-h-0 overflow-hidden'}`}>
             {isEditingDescription ? (
-              <div className="w-full flex-1 flex flex-col">
-                <div className="w-full flex-1 border-2 border-blue-200 rounded-xl overflow-hidden flex flex-col shadow-lg bg-white animate-descriptionFadeIn">
-                  {/* Formatting Toolbar */}
-                  <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
-                    <div className="flex items-center gap-1">
+              <div className={`flex flex-col ${recordings.length > 0 ? '' : 'h-full'}`}>
+                {/* Formatting toolbar */}
+                <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+                  <div className="flex items-center gap-1">
                     {/* Heading buttons */}
                     <button
                       type="button"
@@ -2144,17 +2213,12 @@ Team will reconvene next week to review progress`;
                           const start = textarea.selectionStart;
                           const end = textarea.selectionEnd;
                           const selectedText = tempDescription.substring(start, end);
-
-                          // Check if we're at the start of a line
                           const textBeforeCursor = tempDescription.substring(0, start);
                           const isAtLineStart = start === 0 || textBeforeCursor.endsWith('\n');
-
-                          // Add newline if not at start of line
                           const prefix = isAtLineStart ? '' : '\n';
                           const newText = `${prefix}# ${selectedText || 'Heading 1'}`;
                           const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
                           setTempDescription(newDescription);
-
                           setTimeout(() => {
                             textarea.focus();
                             const offset = prefix.length + 2;
@@ -2174,17 +2238,12 @@ Team will reconvene next week to review progress`;
                           const start = textarea.selectionStart;
                           const end = textarea.selectionEnd;
                           const selectedText = tempDescription.substring(start, end);
-
-                          // Check if we're at the start of a line
                           const textBeforeCursor = tempDescription.substring(0, start);
                           const isAtLineStart = start === 0 || textBeforeCursor.endsWith('\n');
-
-                          // Add newline if not at start of line
                           const prefix = isAtLineStart ? '' : '\n';
                           const newText = `${prefix}## ${selectedText || 'Heading 2'}`;
                           const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
                           setTempDescription(newDescription);
-
                           setTimeout(() => {
                             textarea.focus();
                             const offset = prefix.length + 3;
@@ -2204,17 +2263,12 @@ Team will reconvene next week to review progress`;
                           const start = textarea.selectionStart;
                           const end = textarea.selectionEnd;
                           const selectedText = tempDescription.substring(start, end);
-
-                          // Check if we're at the start of a line
                           const textBeforeCursor = tempDescription.substring(0, start);
                           const isAtLineStart = start === 0 || textBeforeCursor.endsWith('\n');
-
-                          // Add newline if not at start of line
                           const prefix = isAtLineStart ? '' : '\n';
                           const newText = `${prefix}### ${selectedText || 'Heading 3'}`;
                           const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
                           setTempDescription(newDescription);
-
                           setTimeout(() => {
                             textarea.focus();
                             const offset = prefix.length + 4;
@@ -2225,37 +2279,6 @@ Team will reconvene next week to review progress`;
                       className="px-2 py-1 text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition-colors"
                     >
                       H3
-                    </button>
-
-                    {/* Separator button */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const textarea = descriptionTextareaRef.current;
-                        if (textarea) {
-                          const start = textarea.selectionStart;
-                          const end = textarea.selectionEnd;
-
-                          // Check if we're at the start of a line
-                          const textBeforeCursor = tempDescription.substring(0, start);
-                          const needsNewlineBefore = start > 0 && !textBeforeCursor.endsWith('\n\n');
-
-                          // Insert separator with double line break before (enter + enter + "---" + enter)
-                          const separator = `${needsNewlineBefore ? '\n\n' : ''}---\n`;
-                          const newDescription = tempDescription.substring(0, start) + separator + tempDescription.substring(end);
-                          setTempDescription(newDescription);
-
-                          setTimeout(() => {
-                            textarea.focus();
-                            const newPos = start + separator.length;
-                            textarea.setSelectionRange(newPos, newPos);
-                          }, 0);
-                        }
-                      }}
-                      className="px-2 py-1 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition-colors font-mono"
-                      title="Horizontal rule"
-                    >
-                      —
                     </button>
 
                     <div className="w-px h-4 bg-gray-300 mx-1" />
@@ -2303,27 +2326,6 @@ Team will reconvene next week to review progress`;
                     >
                       I
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const textarea = descriptionTextareaRef.current;
-                        if (textarea) {
-                          const start = textarea.selectionStart;
-                          const end = textarea.selectionEnd;
-                          const selectedText = tempDescription.substring(start, end);
-                          const newText = `<u>${selectedText || 'underline'}</u>`;
-                          const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
-                          setTempDescription(newDescription);
-                          setTimeout(() => {
-                            textarea.focus();
-                            textarea.setSelectionRange(start + 3, start + 3 + (selectedText.length || 9));
-                          }, 0);
-                        }
-                      }}
-                      className="px-2 py-1 text-xs underline text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition-colors"
-                    >
-                      U
-                    </button>
 
                     <div className="w-px h-4 bg-gray-300 mx-1" />
 
@@ -2336,17 +2338,12 @@ Team will reconvene next week to review progress`;
                           const start = textarea.selectionStart;
                           const end = textarea.selectionEnd;
                           const selectedText = tempDescription.substring(start, end);
-
-                          // Check if we're at the start of a line
                           const textBeforeCursor = tempDescription.substring(0, start);
                           const isAtLineStart = start === 0 || textBeforeCursor.endsWith('\n');
-
-                          // Add newline if not at start of line
                           const prefix = isAtLineStart ? '' : '\n';
                           const newText = `${prefix}- ${selectedText || 'List item'}`;
                           const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
                           setTempDescription(newDescription);
-
                           setTimeout(() => {
                             textarea.focus();
                             const offset = prefix.length + 2;
@@ -2369,29 +2366,15 @@ Team will reconvene next week to review progress`;
                           const start = textarea.selectionStart;
                           const end = textarea.selectionEnd;
                           const selectedText = tempDescription.substring(start, end);
-
-                          // Check if we're at the start of a line
                           const textBeforeCursor = tempDescription.substring(0, start);
                           const isAtLineStart = start === 0 || textBeforeCursor.endsWith('\n');
-
-                          // Get current line to check indentation
-                          const lines = textBeforeCursor.split('\n');
-                          const currentLine = lines[lines.length - 1];
-                          const leadingSpaces = currentLine.match(/^(\s*)/)?.[1] || '';
-                          const indentLevel = Math.floor(leadingSpaces.length / 4);
-
-                          // Always use '1. ' for markdown compatibility
-                          let marker = '1. ';
-
-                          // Add newline if not at start of line
                           const prefix = isAtLineStart ? '' : '\n';
-                          const newText = `${prefix}${leadingSpaces}${marker}${selectedText || 'List item'}`;
+                          const newText = `${prefix}1. ${selectedText || 'List item'}`;
                           const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
                           setTempDescription(newDescription);
-
                           setTimeout(() => {
                             textarea.focus();
-                            const offset = prefix.length + leadingSpaces.length + marker.length;
+                            const offset = prefix.length + 3;
                             textarea.setSelectionRange(start + offset, start + offset + (selectedText.length || 9));
                           }, 0);
                         }
@@ -2401,65 +2384,25 @@ Team will reconvene next week to review progress`;
                     >
                       #
                     </button>
-                    </div>
                   </div>
+                </div>
 
-                  {/* Textarea */}
+                {/* Textarea container */}
+                <div className={`${recordings.length > 0 ? 'flex flex-col' : 'flex-1 flex flex-col min-h-0'}`}>
                   <textarea
                     ref={descriptionTextareaRef}
                     value={tempDescription}
                     onChange={(e) => {
                       const newValue = e.target.value;
                       setTempDescription(newValue);
-
-                      // Update the live context for instant display update (like title does)
                       if (editedEvent) {
                         updateLiveEvent(editedEvent.id, { description: newValue });
                         const updated = { ...editedEvent, description: newValue };
                         setEditedEvent(updated);
                         editedEventRef.current = updated;
                       }
-
-                      // Add to history on significant changes (debounced effect)
-                      // Clear any existing timer
-                      if (historyTimerRef.current) {
-                        clearTimeout(historyTimerRef.current);
-                      }
-
-                      // Set new timer to add to history after user stops typing
-                      historyTimerRef.current = setTimeout(() => {
-                        const newHistory = [...descriptionHistory.slice(0, descriptionHistoryIndex + 1), newValue];
-                        // Keep only last 50 states
-                        const trimmedHistory = newHistory.length > 50
-                          ? newHistory.slice(newHistory.length - 50)
-                          : newHistory;
-                        setDescriptionHistory(trimmedHistory);
-                        setDescriptionHistoryIndex(trimmedHistory.length - 1);
-                        historyTimerRef.current = null;
-                      }, 500);
                     }}
                     onKeyDown={(e) => {
-                      // Handle Cmd/Ctrl+Z for undo and Cmd/Ctrl+Shift+Z for redo
-                      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
-                        e.preventDefault();
-                        if (descriptionHistoryIndex > 0) {
-                          const newIndex = descriptionHistoryIndex - 1;
-                          setDescriptionHistoryIndex(newIndex);
-                          setTempDescription(descriptionHistory[newIndex]);
-                        }
-                        return;
-                      }
-
-                      if ((e.metaKey || e.ctrlKey) && ((e.key === 'z' && e.shiftKey) || e.key === 'y')) {
-                        e.preventDefault();
-                        if (descriptionHistoryIndex < descriptionHistory.length - 1) {
-                          const newIndex = descriptionHistoryIndex + 1;
-                          setDescriptionHistoryIndex(newIndex);
-                          setTempDescription(descriptionHistory[newIndex]);
-                        }
-                        return;
-                      }
-                      // Check for Cmd+Enter (Mac) or Ctrl+Enter (Windows/Linux) to save
                       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
                         e.preventDefault();
                         updateEvent('description', tempDescription);
@@ -2467,205 +2410,138 @@ Team will reconvene next week to review progress`;
                         setTempDescription('');
                         return;
                       }
-
-                      // Check for Tab key to handle list indentation
-                      if (e.key === 'Tab') {
-                        const textarea = e.currentTarget;
-                        const cursorPos = textarea.selectionStart;
-                        const textBeforeCursor = tempDescription.substring(0, cursorPos);
-                        const textAfterCursor = tempDescription.substring(cursorPos);
-
-                        // Find the current line
-                        const lines = textBeforeCursor.split('\n');
-                        const currentLine = lines[lines.length - 1];
-                        const lineStart = cursorPos - currentLine.length;
-
-                        // Check if current line is a list item
-                        const bulletMatch = currentLine.match(/^(\s*)(-\s+.*)$/);
-                        const numberMatch = currentLine.match(/^(\s*)(\d+)\.\s+(.*)$/);
-
-                        if (bulletMatch) {
-                          e.preventDefault();
-                          const currentIndent = bulletMatch[1];
-                          const listContent = bulletMatch[2];
-
-                          if (e.shiftKey) {
-                            // Shift+Tab: Remove indentation (up to 4 spaces)
-                            const spacesToRemove = Math.min(4, currentIndent.length);
-                            const newIndent = currentIndent.substring(spacesToRemove);
-                            const newLine = newIndent + listContent;
-                            const newText = tempDescription.substring(0, lineStart) + newLine + textAfterCursor;
-                            setTempDescription(newText);
-                            setTimeout(() => {
-                              const newPos = lineStart + newLine.length - listContent.length + 2;
-                              textarea.setSelectionRange(newPos, newPos);
-                            }, 0);
-                          } else {
-                            // Tab: Add indentation (4 spaces)
-                            const newIndent = currentIndent + '    ';
-                            const newLine = newIndent + listContent;
-                            const newText = tempDescription.substring(0, lineStart) + newLine + textAfterCursor;
-                            setTempDescription(newText);
-                            setTimeout(() => {
-                              const newPos = cursorPos + 4;
-                              textarea.setSelectionRange(newPos, newPos);
-                            }, 0);
-                          }
-                          return;
-                        } else if (numberMatch) {
-                          e.preventDefault();
-                          const match = numberMatch;
-                          const currentIndent = match[1];
-                          const marker = match[2];
-                          const content = match[3];
-
-                          if (e.shiftKey) {
-                            // Shift+Tab: Remove indentation and change format
-                            const spacesToRemove = Math.min(4, currentIndent.length);
-                            const newIndent = currentIndent.substring(spacesToRemove);
-                            const newIndentLevel = Math.floor(newIndent.length / 4);
-
-                            // Always use '1' for markdown compatibility
-                            let newMarker = '1';
-
-                            const newLine = newIndent + newMarker + '. ' + content;
-                            const newText = tempDescription.substring(0, lineStart) + newLine + textAfterCursor;
-                            setTempDescription(newText);
-                            setTimeout(() => {
-                              const newPos = lineStart + newIndent.length + newMarker.length + 2;
-                              textarea.setSelectionRange(newPos, newPos);
-                            }, 0);
-                          } else {
-                            // Tab: Add indentation and change format
-                            const newIndent = currentIndent + '    ';
-                            const newIndentLevel = Math.floor(newIndent.length / 4);
-
-                            // For proper markdown, always use numbers
-                            // The CSS will style nested lists as letters
-                            let newMarker = '1';
-
-                            const newLine = newIndent + newMarker + '. ' + content;
-                            const newText = tempDescription.substring(0, lineStart) + newLine + textAfterCursor;
-                            setTempDescription(newText);
-                            setTimeout(() => {
-                              const newPos = lineStart + newIndent.length + newMarker.length + 2;
-                              textarea.setSelectionRange(newPos, newPos);
-                            }, 0);
-                          }
-                          return;
-                        }
-                      }
-
-                      // Check for Backspace key to handle list deletion
-                      if (e.key === 'Backspace') {
-                        const textarea = e.currentTarget;
-                        const cursorPos = textarea.selectionStart;
-                        const textBeforeCursor = tempDescription.substring(0, cursorPos);
-
-                        // Find the current line
-                        const lines = textBeforeCursor.split('\n');
-                        const currentLine = lines[lines.length - 1];
-
-                        // Check if cursor is right after a bullet point or number
-                        if (currentLine.match(/^(\s*)-\s*$/) ||
-                            currentLine.match(/^(\s*)(\d+)\.\s*$/)) {
-                          e.preventDefault();
-                          const lineStart = cursorPos - currentLine.length;
-                          const textAfterCursor = tempDescription.substring(cursorPos);
-                          const newText = tempDescription.substring(0, lineStart) + textAfterCursor;
-                          setTempDescription(newText);
-                          setTimeout(() => {
-                            textarea.setSelectionRange(lineStart, lineStart);
-                          }, 0);
-                          return;
-                        }
-                      }
-
-                      // Check for Enter key to handle list continuation
-                      if (e.key === 'Enter') {
-                        const textarea = e.currentTarget;
-                        const cursorPos = textarea.selectionStart;
-                        const textBeforeCursor = tempDescription.substring(0, cursorPos);
-                        const textAfterCursor = tempDescription.substring(cursorPos);
-
-                        // Find the current line
-                        const lines = textBeforeCursor.split('\n');
-                        const currentLine = lines[lines.length - 1];
-
-                        // Check if current line starts with a bullet point
-                        const bulletMatch = currentLine.match(/^(\s*)-\s+(.*)$/);
-                        // Check if current line starts with a number
-                        const numberMatch = currentLine.match(/^(\s*)(\d+)\.\s+(.*)$/);
-
-                        if (bulletMatch) {
-                          e.preventDefault();
-                          const indent = bulletMatch[1];
-                          const content = bulletMatch[2];
-
-                          // If the line only has "- " (empty item), remove it instead of continuing
-                          if (!content || content.trim() === '') {
-                            const newText = tempDescription.substring(0, cursorPos - currentLine.length) + textAfterCursor;
-                            setTempDescription(newText);
-                            setTimeout(() => {
-                              textarea.setSelectionRange(cursorPos - currentLine.length, cursorPos - currentLine.length);
-                            }, 0);
-                          } else {
-                            // Add new bullet point on next line with same indentation
-                            const newText = textBeforeCursor + '\n' + indent + '- ' + textAfterCursor;
-                            setTempDescription(newText);
-                            setTimeout(() => {
-                              const newPos = textBeforeCursor.length + 1 + indent.length + 2;
-                              textarea.setSelectionRange(newPos, newPos);
-                            }, 0);
-                          }
-                        } else if (numberMatch) {
-                          e.preventDefault();
-                          const indent = numberMatch[1];
-                          const marker = numberMatch[2];
-                          const content = numberMatch[3];
-
-                          // If the line only has marker (empty item), remove it instead of continuing
-                          if (!content || content.trim() === '') {
-                            const newText = tempDescription.substring(0, cursorPos - currentLine.length) + textAfterCursor;
-                            setTempDescription(newText);
-                            setTimeout(() => {
-                              textarea.setSelectionRange(cursorPos - currentLine.length, cursorPos - currentLine.length);
-                            }, 0);
-                          } else {
-                            // Continue with next number
-                            const currentNumber = parseInt(marker);
-                            const nextMarker = (currentNumber + 1) + '. ';
-
-                            // Add new item on next line with appropriate marker
-                            const newText = textBeforeCursor + '\n' + indent + nextMarker + textAfterCursor;
-                            setTempDescription(newText);
-                            setTimeout(() => {
-                              const newPos = textBeforeCursor.length + 1 + indent.length + nextMarker.length;
-                              textarea.setSelectionRange(newPos, newPos);
-                            }, 0);
-                          }
-                        }
-                      }
                     }}
-                    className="w-full flex-1 text-gray-700 bg-transparent px-4 py-3 outline-none focus:ring-0 resize-none text-sm min-h-0 overflow-y-auto font-mono"
+                    className={`w-full ${recordings.length > 0 ? 'min-h-[250px]' : 'flex-1'} text-gray-700 bg-transparent px-4 py-3 outline-none focus:ring-0 resize-none text-sm font-mono`}
                     placeholder="Add your notes • Supports markdown, LaTeX math ($x^2$), tables, code blocks..."
                   />
                 </div>
-                <div className="flex items-center justify-between mt-3 px-1">
+
+                {/* Recordings container */}
+                {recordings.length > 0 && (
+                  <div className="border-t border-gray-200 p-4 bg-white/50 mt-2">
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-sm font-semibold text-gray-700">Voice Recordings</h4>
+                      <span className="text-sm text-gray-500">{recordings.length} recording{recordings.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div className="space-y-2">
+                      {recordings.map((recording, index) => (
+                        <div key={recording.id} className="group relative bg-white border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-sm transition-all duration-200">
+                          <div className="flex items-center py-2 px-3">
+                            <div className="flex items-center gap-3 flex-1">
+                              <button
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  e.nativeEvent.stopImmediatePropagation();
+                                }}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  e.nativeEvent.stopImmediatePropagation();
+                                  playRecording(recording.id);
+                                }}
+                                className={`relative flex items-center justify-center w-8 h-8 rounded-full transition-all duration-200 ${
+                                  recording.isPlaying
+                                    ? 'bg-blue-600 text-white shadow-sm'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-600'
+                                }`}
+                                title={recording.isPlaying ? 'Pause' : 'Play recording'}
+                              >
+                                {recording.isPlaying ? (
+                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                                    <rect x="7" y="7" width="4" height="10" rx="1" />
+                                    <rect x="13" y="7" width="4" height="10" rx="1" />
+                                  </svg>
+                                ) : (
+                                  <svg className="w-3 h-3 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M8 5v14l11-7z"/>
+                                  </svg>
+                                )}
+                              </button>
+                              <div className="flex-1 flex items-center gap-3">
+                                <span className="text-sm font-medium text-gray-800">Recording #{index + 1}</span>
+                                <span className="text-xs text-gray-500 font-mono bg-gray-100 px-1.5 py-0.5 rounded">{formatRecordingTime(recording.duration)}</span>
+                                {recording.transcript && (
+                                  <span className="inline-flex items-center gap-1 text-xs text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full">
+                                    <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
+                                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                    </svg>
+                                    <span className="text-[10px]">Transcribed</span>
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {!recording.transcript && !recording.isTranscribing && (
+                                <button
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    e.nativeEvent.stopImmediatePropagation();
+                                  }}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    e.nativeEvent.stopImmediatePropagation();
+                                    transcribeRecording(recording.id);
+                                  }}
+                                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 rounded-md transition-all duration-200"
+                                  title="Generate AI transcript"
+                                >
+                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+                                  </svg>
+                                  <span>AI</span>
+                                </button>
+                              )}
+                              {recording.isTranscribing && (
+                                <div className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-indigo-600 bg-indigo-50 rounded">
+                                  <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                  </svg>
+                                  <span>Processing</span>
+                                </div>
+                              )}
+                              <button
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  e.nativeEvent.stopImmediatePropagation();
+                                }}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  e.nativeEvent.stopImmediatePropagation();
+                                  setShowDeleteModal(recording.id);
+                                }}
+                                className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors opacity-0 group-hover:opacity-100"
+                                title="Delete recording"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex items-center justify-between p-3 border-t border-gray-200 bg-gray-50">
                   <div className="flex items-center gap-2">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        // If we're already editing, tempDescription should have the latest content
-                        // If not editing yet, initialize it from the saved description
                         if (!isEditingDescription) {
                           setTempDescription(editedEvent.description || '');
                         }
-                        // Save cursor position before expanding
                         const cursorPos = descriptionTextareaRef.current?.selectionStart || 0;
                         const cursorEnd = descriptionTextareaRef.current?.selectionEnd || 0;
                         setIsFullScreen(true);
-                        // Restore cursor position after fullscreen textarea renders
                         setTimeout(() => {
                           const fullscreenTextarea = document.querySelector('.fullscreen-textarea') as HTMLTextAreaElement;
                           if (fullscreenTextarea) {
@@ -2682,8 +2558,7 @@ Team will reconvene next week to review progress`;
                       Expand
                     </button>
 
-                    {/* Recording buttons in edit mode */}
-                    {!isRecording && !hasRecording && (
+                    {!isRecording && (
                       <button
                         type="button"
                         onMouseDown={(e) => {
@@ -2697,13 +2572,14 @@ Team will reconvene next week to review progress`;
                           e.nativeEvent.stopImmediatePropagation();
                           startRecording();
                         }}
-                        className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
-                        title="Record audio note"
+                        className="group flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 hover:border-red-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 shadow-sm hover:shadow"
+                        title="Start voice recording"
                       >
-                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                           <path d="M12 15c1.66 0 3-1.34 3-3V6c0-1.66-1.34-3-3-3S9 4.34 9 6v6c0 1.66 1.34 3 3 3z"/>
                           <path d="M17 12c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
                         </svg>
+                        <span>Record</span>
                       </button>
                     )}
 
@@ -2721,63 +2597,31 @@ Team will reconvene next week to review progress`;
                           e.nativeEvent.stopImmediatePropagation();
                           stopRecording();
                         }}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-white bg-red-500 hover:bg-red-600 rounded-lg transition-all duration-200 animate-pulse"
+                        className="relative flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 rounded-lg transition-all duration-200 shadow-md"
                       >
-                        <div className="w-1.5 h-1.5 bg-white rounded-full" />
-                        {formatRecordingTime(recordingTime)}
-                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-                          <rect x="8" y="8" width="8" height="8" rx="1" />
-                        </svg>
+                        <div className="flex items-center gap-1.5">
+                          <div className="relative flex items-center justify-center">
+                            <div className="absolute w-3 h-3 bg-white rounded-full animate-ping"></div>
+                            <div className="relative w-2 h-2 bg-white rounded-full"></div>
+                          </div>
+                          <span className="font-mono">{formatRecordingTime(recordingTime)}</span>
+                        </div>
+                        <div className="h-3 w-px bg-white/30"></div>
+                        <div className="flex items-center gap-1">
+                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                            <rect x="6" y="6" width="12" height="12" rx="2" />
+                          </svg>
+                          <span>Stop</span>
+                        </div>
                       </button>
-                    )}
-
-                    {hasRecording && !isTranscribing && (
-                      <button
-                        type="button"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          e.nativeEvent.stopImmediatePropagation();
-                        }}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          e.nativeEvent.stopImmediatePropagation();
-                          transcribeRecording();
-                        }}
-                        className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-lg transition-all duration-200"
-                        title="Transcribe recording"
-                      >
-                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M20.5 2h-17A1.5 1.5 0 002 3.5v17A1.5 1.5 0 003.5 22h17a1.5 1.5 0 001.5-1.5v-17A1.5 1.5 0 0020.5 2zM8 13.65l1.75-3.48a.5.5 0 01.45-.27h.05a.5.5 0 01.44.32l1.2 3.85 1.92-7.72a.5.5 0 01.49-.38.5.5 0 01.48.4l1.28 6.88 1.08-2.16a.5.5 0 01.45-.28H19v1h-1.08l-1.56 3.12a.5.5 0 01-.47.28h-.02a.5.5 0 01-.46-.34l-1.31-7-1.93 7.73a.5.5 0 01-.48.38h-.01a.5.5 0 01-.48-.35l-1.38-4.42L8.52 14.3a.5.5 0 01-.95-.08l-.77-3.08H5v-1h2.3a.5.5 0 01.49.38L8 11.37z"/>
-                        </svg>
-                        AI
-                      </button>
-                    )}
-
-                    {isTranscribing && (
-                      <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-blue-600">
-                        <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        AI...
-                      </div>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.nativeEvent.stopImmediatePropagation();
-                      }}
                       onClick={(e) => {
                         e.stopPropagation();
-                        e.nativeEvent.stopImmediatePropagation();
                         e.preventDefault();
-                        cancelClickTimeRef.current = Date.now();
                         setIsEditingDescription(false);
                         setTempDescription('');
                       }}
@@ -2805,47 +2649,12 @@ Team will reconvene next week to review progress`;
             ) : (
               <div className="w-full h-full animate-descriptionFadeIn overflow-hidden">
                 <div
-                  onMouseDown={(e) => {
-                    // Prevent any default mouse behavior
-                    e.stopPropagation();
-                    e.nativeEvent.stopImmediatePropagation();
-                  }}
-                  onPointerDown={(e) => {
-                    // Also stop pointer events
-                    e.stopPropagation();
-                    e.nativeEvent.stopImmediatePropagation();
-                  }}
                   onClick={(e) => {
-                    // Stop all propagation
                     e.stopPropagation();
-                    e.nativeEvent.stopImmediatePropagation();
                     e.preventDefault();
-
-                    // Prevent re-entering edit mode immediately after canceling
-                    if (Date.now() - cancelClickTimeRef.current < 100) {
-                      return;
-                    }
-
-                    // Enter edit mode
                     setIsEditingDescription(true);
                     const initialDescription = editedEvent.description || '';
                     setTempDescription(initialDescription);
-
-                    // Restore history if it exists, otherwise initialize
-                    if (editedEvent.id && descriptionHistoriesStore.has(editedEvent.id)) {
-                      const stored = descriptionHistoriesStore.get(editedEvent.id)!;
-                      setDescriptionHistory(stored.history);
-                      setDescriptionHistoryIndex(stored.index);
-                      // Use the last state from history as temp description
-                      if (stored.history[stored.index] !== undefined) {
-                        setTempDescription(stored.history[stored.index]);
-                      }
-                    } else {
-                      // Initialize history when starting to edit
-                      setDescriptionHistory([initialDescription]);
-                      setDescriptionHistoryIndex(0);
-                    }
-                    // Focus the textarea after a short delay to ensure it's rendered
                     setTimeout(() => {
                       if (descriptionTextareaRef.current) {
                         descriptionTextareaRef.current.focus();
@@ -2857,55 +2666,52 @@ Team will reconvene next week to review progress`;
                   role="button"
                   aria-label="Click to edit description"
                 >
-                {editedEvent.description ? (
-                  <div
-                    className="prose prose-sm max-w-none event-description-content"
-                    style={{ pointerEvents: 'auto' }}
-                  >
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm, remarkMath]}
-                      rehypePlugins={[rehypeKatex]}
-                      components={{
-                        a: ({ children, href, ...props }) => (
-                          <span
-                            style={{ textDecoration: 'underline', cursor: 'inherit', color: 'inherit' }}
-                            onClick={(e) => e.preventDefault()}
-                          >
-                            {children}
-                          </span>
-                        )
-                      }}
-                    >
-                      {editedEvent.description}
-                    </ReactMarkdown>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-4 text-center">
-                    <div className="mb-3">
-                      <svg className="w-10 h-10 text-gray-300 group-hover:text-blue-400 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
+                  {editedEvent.description ? (
+                    <div className="prose prose-sm max-w-none event-description-content">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm, remarkMath]}
+                        rehypePlugins={[rehypeKatex]}
+                        components={{
+                          a: ({ children, href, ...props }) => (
+                            <span
+                              style={{ textDecoration: 'underline', cursor: 'inherit', color: 'inherit' }}
+                              onClick={(e) => e.preventDefault()}
+                            >
+                              {children}
+                            </span>
+                          )
+                        }}
+                      >
+                        {editedEvent.description}
+                      </ReactMarkdown>
                     </div>
-                    <span className="text-gray-600 font-medium text-sm">
-                      Click to add notes
-                    </span>
-                    <span className="text-xs text-gray-400 mt-2 leading-relaxed max-w-[280px]">
-                      Supports Markdown • LaTeX Math • Tables • Lists • Code blocks
-                    </span>
-                    <div className="flex items-center gap-1.5 mt-3 px-3 py-1.5 bg-gradient-to-r from-green-50 to-blue-50 rounded-full border border-green-200/50">
-                      <svg className="w-3.5 h-3.5 text-green-600" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M21.731 2.269a2.625 2.625 0 00-3.712 0l-1.157 1.157 3.712 3.712 1.157-1.157a2.625 2.625 0 000-3.712zM19.513 8.199l-3.712-3.712-8.4 8.4a5.25 5.25 0 00-1.32 2.214l-.8 2.685a.75.75 0 00.933.933l2.685-.8a5.25 5.25 0 002.214-1.32l8.4-8.4z"/>
-                        <path d="M5.25 5.25a3 3 0 00-3 3v10.5a3 3 0 003 3h10.5a3 3 0 003-3V13.5a.75.75 0 00-1.5 0v5.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5V8.25a1.5 1.5 0 011.5-1.5h5.25a.75.75 0 000-1.5H5.25z"/>
-                      </svg>
-                      <span className="text-[10px] font-medium text-green-700">
-                        Works with ChatGPT
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-4 text-center">
+                      <div className="mb-3">
+                        <svg className="w-10 h-10 text-gray-300 group-hover:text-blue-400 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                      <span className="text-gray-600 font-medium text-sm">
+                        Click to add notes
                       </span>
-                      <span className="text-[10px] text-gray-500">
-                        • Use copy button for markdown
+                      <span className="text-xs text-gray-400 mt-2 leading-relaxed max-w-[280px]">
+                        Supports Markdown • LaTeX Math • Tables • Lists • Code blocks
                       </span>
+                      <div className="flex items-center gap-1.5 mt-3 px-3 py-1.5 bg-gradient-to-r from-green-50 to-blue-50 rounded-full border border-green-200/50">
+                        <svg className="w-3.5 h-3.5 text-green-600" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M21.731 2.269a2.625 2.625 0 00-3.712 0l-1.157 1.157 3.712 3.712 1.157-1.157a2.625 2.625 0 000-3.712zM19.513 8.199l-3.712-3.712-8.4 8.4a5.25 5.25 0 00-1.32 2.214l-.8 2.685a.75.75 0 00.933.933l2.685-.8a5.25 5.25 0 002.214-1.32l8.4-8.4z"/>
+                          <path d="M5.25 5.25a3 3 0 00-3 3v10.5a3 3 0 003 3h10.5a3 3 0 003-3V13.5a.75.75 0 00-1.5 0v5.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5V8.25a1.5 1.5 0 011.5-1.5h5.25a.75.75 0 000-1.5H5.25z"/>
+                        </svg>
+                        <span className="text-[10px] font-medium text-green-700">
+                          Works with ChatGPT
+                        </span>
+                        <span className="text-[10px] text-gray-500">
+                          • Use copy button for markdown
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
                 </div>
               </div>
             )}
@@ -3773,6 +3579,79 @@ Team will reconvene next week to review progress`;
               }
             }}
           />
+        )}
+
+        {/* Delete Recording Modal */}
+        {showDeleteModal && (
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] animate-fadeIn"
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+            }}
+          >
+            <div
+              className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full mx-4 transform transition-all duration-200 scale-100"
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                e.nativeEvent.stopImmediatePropagation();
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.nativeEvent.stopImmediatePropagation();
+              }}
+            >
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0 w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                  <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Recording?</h3>
+                  <p className="text-sm text-gray-600 mb-5">This will permanently delete the recording. This action cannot be undone.</p>
+                  <div className="flex justify-end gap-3">
+                    <button
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
+                      }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
+                        setShowDeleteModal(null);
+                      }}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
+                      }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
+                        deleteRecording(showDeleteModal);
+                      }}
+                      className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors shadow-sm"
+                    >
+                      Delete Recording
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>
