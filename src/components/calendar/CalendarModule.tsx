@@ -1102,6 +1102,7 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
           const newEvent: CalendarEvent = {
             id: Date.now().toString(),
             title: '', // Start with empty title to trigger auto-focus
+            description: '', // Always start with empty description for new events
             start: startTime.toISOString(),
             end: endTime.toISOString(),
             timezone: 'America/New_York',

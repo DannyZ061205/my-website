@@ -153,6 +153,13 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
       // Set whether title input should be enabled based on if it's a new event
       setTitleInputEnabled(eventIsNew);
 
+      // Reset description editing state when switching to a different event
+      // This prevents new events from inheriting the description from previous events
+      setIsEditingDescription(false);
+      setTempDescription('');
+      setDescriptionHistory([]);
+      setDescriptionHistoryIndex(0);
+
       // Auto-focus and select title input ONLY for just-created events
       if (eventIsNew) {
         // Small delay to ensure component is mounted
