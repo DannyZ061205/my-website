@@ -599,8 +599,9 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                 setTempDescription(savedDescriptionRef.current);
               }
 
-              // Re-focus
+              // Re-focus and set cursor to end
               textarea.focus();
+              textarea.setSelectionRange(textarea.value.length, textarea.value.length);
             }
           }, 100);
         }
@@ -3353,6 +3354,11 @@ Team will reconvene next week to review progress`;
                                   setTempDescription(savedDescriptionRef.current);
                                   if (fullscreenTextareaRef.current) {
                                     fullscreenTextareaRef.current.value = savedDescriptionRef.current;
+                                    // Set cursor to end
+                                    fullscreenTextareaRef.current.setSelectionRange(
+                                      fullscreenTextareaRef.current.value.length,
+                                      fullscreenTextareaRef.current.value.length
+                                    );
                                   }
                                 }, 0);
                                 return;
@@ -3575,7 +3581,7 @@ Team will reconvene next week to review progress`;
                                 textarea.style.pointerEvents = 'none';
                                 // Clear any selection
                                 window.getSelection()?.removeAllRanges();
-                                textarea.setSelectionRange(0, 0);
+                                // Don't change cursor position, just remove selection
                                 // Mark as read-only temporarily
                                 textarea.readOnly = true;
                               }
@@ -3639,7 +3645,7 @@ Team will reconvene next week to review progress`;
                                 textarea.style.pointerEvents = 'none';
                                 // Clear any selection
                                 window.getSelection()?.removeAllRanges();
-                                textarea.setSelectionRange(0, 0);
+                                // Don't change cursor position, just remove selection
                                 // Mark as read-only temporarily
                                 textarea.readOnly = true;
                               }
