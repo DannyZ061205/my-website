@@ -46,6 +46,9 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   const [descriptionHistory, setDescriptionHistory] = useState<string[]>([]);
   const [descriptionHistoryIndex, setDescriptionHistoryIndex] = useState(-1);
   const [mounted, setMounted] = useState(false);
+  const savedDescriptionRef = useRef<string>('');  // To protect against text loss
+  const fullscreenTextareaRef = useRef<HTMLTextAreaElement>(null);  // Direct ref to fullscreen textarea
+  const isDraggingRef = useRef(false);  // Track if we're in a drag operation
 
   // Recording states
   const [isRecording, setIsRecording] = useState(false);
@@ -564,6 +567,53 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [onCancel, onSave, onDelete, isFullScreen, saveTimeout, hasEventBeenModified, editedEvent, isEditingDescription]);
+
+  // Protect textarea content when in fullscreen mode
+  useEffect(() => {
+    if (isFullScreen && fullscreenTextareaRef.current) {
+      const textarea = fullscreenTextareaRef.current;
+
+      // Always keep the saved value up to date
+      if (tempDescription !== '') {
+        savedDescriptionRef.current = tempDescription;
+      }
+
+      // Global mouse up handler to restore content if needed
+      const handleGlobalMouseUp = () => {
+        if (isDraggingRef.current) {
+          setTimeout(() => {
+            isDraggingRef.current = false;
+
+            if (textarea) {
+              // Re-enable textarea
+              textarea.style.userSelect = 'text';
+              textarea.style.webkitUserSelect = 'text';
+              textarea.style.pointerEvents = 'auto';
+              textarea.readOnly = false;
+
+              // Restore content if it was cleared
+              if (textarea.value === '' && savedDescriptionRef.current !== '') {
+                textarea.value = savedDescriptionRef.current;
+                setTempDescription(savedDescriptionRef.current);
+              } else if (tempDescription === '' && savedDescriptionRef.current !== '') {
+                setTempDescription(savedDescriptionRef.current);
+              }
+
+              // Re-focus
+              textarea.focus();
+            }
+          }, 100);
+        }
+      };
+
+      // Add global mouseup listener
+      document.addEventListener('mouseup', handleGlobalMouseUp);
+
+      return () => {
+        document.removeEventListener('mouseup', handleGlobalMouseUp);
+      };
+    }
+  }, [isFullScreen, tempDescription]);
 
   // Clean up timeout on unmount and save description if editing
   useEffect(() => {
@@ -3235,9 +3285,79 @@ Team will reconvene next week to review progress`;
                             <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-white/80 to-transparent pointer-events-none z-10" />
 
                             <textarea
+                            ref={fullscreenTextareaRef}
                             value={tempDescription}
+                            onFocus={() => {
+                              // Always save the value when textarea gains focus
+                              savedDescriptionRef.current = tempDescription;
+                            }}
+                            onBlur={() => {
+                              // When losing focus during drag, restore content
+                              if (isDraggingRef.current && tempDescription === '' && savedDescriptionRef.current !== '') {
+                                // Restore the content immediately
+                                setTimeout(() => {
+                                  setTempDescription(savedDescriptionRef.current);
+                                  // Re-focus the textarea
+                                  if (fullscreenTextareaRef.current) {
+                                    fullscreenTextareaRef.current.focus();
+                                  }
+                                }, 0);
+                              }
+                            }}
+                            onBeforeInput={() => {
+                              // Save value before any input changes
+                              if (tempDescription !== '') {
+                                savedDescriptionRef.current = tempDescription;
+                              }
+                            }}
+                            onSelect={(e) => {
+                              // Block selection entirely if we're in a drag operation
+                              if (isDraggingRef.current) {
+                                e.preventDefault();
+                                window.getSelection()?.removeAllRanges();
+                                // Reset selection to nothing
+                                const textarea = e.currentTarget as HTMLTextAreaElement;
+                                textarea.setSelectionRange(0, 0);
+                                return false;
+                              }
+                              // Normal selection - save the value
+                              savedDescriptionRef.current = tempDescription;
+                            }}
+                            onDragStart={(e) => {
+                              // Prevent drag operations that could cause text loss
+                              e.preventDefault();
+                              return false;
+                            }}
+                            onDragEnter={(e) => {
+                              e.preventDefault();
+                              return false;
+                            }}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              return false;
+                            }}
+                            onDrop={(e) => {
+                              // Prevent drop operations
+                              e.preventDefault();
+                              return false;
+                            }}
                             onChange={(e) => {
                               const newValue = e.target.value;
+
+                              // Prevent clearing during drag operations
+                              if (isDraggingRef.current && newValue === '' && savedDescriptionRef.current !== '') {
+                                // Don't update to empty during drag
+                                e.preventDefault();
+                                // Restore the saved value
+                                setTimeout(() => {
+                                  setTempDescription(savedDescriptionRef.current);
+                                  if (fullscreenTextareaRef.current) {
+                                    fullscreenTextareaRef.current.value = savedDescriptionRef.current;
+                                  }
+                                }, 0);
+                                return;
+                              }
+
                               setTempDescription(newValue);
 
                               // Add to history on significant changes (debounced effect)
@@ -3405,7 +3525,20 @@ Team will reconvene next week to review progress`;
                       {/* Minimal footer - just save/cancel */}
                       <div className={`fixed bottom-4 left-1/2 transform -translate-x-1/2 flex items-center justify-center gap-3 z-30 transition-opacity duration-300 ease-out ${showFullscreenControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                         <div
-                          className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 px-2 py-2 flex items-center gap-2"
+                          className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 px-2 py-2 flex items-center gap-2 select-none"
+                          style={{ userSelect: 'none' }}
+                          onMouseDown={(e) => {
+                            // Prevent any text selection when clicking anywhere in the button container
+                            e.preventDefault();
+                            e.stopPropagation();
+                            // Clear any existing text selection
+                            if (window.getSelection) {
+                              const selection = window.getSelection();
+                              if (selection) {
+                                selection.removeAllRanges();
+                              }
+                            }
+                          }}
                           onMouseEnter={() => {
                             if (hideControlsTimerRef.current) {
                               clearTimeout(hideControlsTimerRef.current);
@@ -3422,6 +3555,57 @@ Team will reconvene next week to review progress`;
                           }}
                         >
                           <button
+                            onMouseDown={(e) => {
+                              // Prevent all default behaviors
+                              e.preventDefault();
+                              e.stopPropagation();
+
+                              // Mark drag operation as started
+                              isDraggingRef.current = true;
+
+                              // Save the current textarea value
+                              savedDescriptionRef.current = tempDescription;
+
+                              // Make textarea completely non-interactive during drag
+                              if (fullscreenTextareaRef.current) {
+                                const textarea = fullscreenTextareaRef.current;
+                                // Disable all interactions
+                                textarea.style.userSelect = 'none';
+                                textarea.style.webkitUserSelect = 'none';
+                                textarea.style.pointerEvents = 'none';
+                                // Clear any selection
+                                window.getSelection()?.removeAllRanges();
+                                textarea.setSelectionRange(0, 0);
+                                // Mark as read-only temporarily
+                                textarea.readOnly = true;
+                              }
+                            }}
+                            onMouseUp={(e) => {
+                              e.stopPropagation();
+
+                              // Use a small delay to ensure all browser events complete
+                              setTimeout(() => {
+                                isDraggingRef.current = false;
+
+                                if (fullscreenTextareaRef.current) {
+                                  const textarea = fullscreenTextareaRef.current;
+
+                                  // Re-enable the textarea
+                                  textarea.style.userSelect = 'text';
+                                  textarea.style.webkitUserSelect = 'text';
+                                  textarea.style.pointerEvents = 'auto';
+                                  textarea.readOnly = false;
+
+                                  // Check and restore content if lost
+                                  if (tempDescription === '' && savedDescriptionRef.current !== '') {
+                                    setTempDescription(savedDescriptionRef.current);
+                                  }
+
+                                  // Ensure textarea is focused and ready
+                                  textarea.focus();
+                                }
+                              }, 50);
+                            }}
                             onClick={() => {
                               // Don't clear tempDescription when just closing fullscreen
                               // The user might want to continue editing in normal mode
@@ -3429,11 +3613,63 @@ Team will reconvene next week to review progress`;
                               setFullScreenMode('editor');
                               // Don't clear tempDescription here
                             }}
-                            className="px-5 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all duration-200"
+                            className="px-5 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all duration-200 select-none"
+                            style={{ userSelect: 'none' }}
                           >
                             Cancel
                           </button>
                           <button
+                            onMouseDown={(e) => {
+                              // Prevent all default behaviors
+                              e.preventDefault();
+                              e.stopPropagation();
+
+                              // Mark drag operation as started
+                              isDraggingRef.current = true;
+
+                              // Save the current textarea value
+                              savedDescriptionRef.current = tempDescription;
+
+                              // Make textarea completely non-interactive during drag
+                              if (fullscreenTextareaRef.current) {
+                                const textarea = fullscreenTextareaRef.current;
+                                // Disable all interactions
+                                textarea.style.userSelect = 'none';
+                                textarea.style.webkitUserSelect = 'none';
+                                textarea.style.pointerEvents = 'none';
+                                // Clear any selection
+                                window.getSelection()?.removeAllRanges();
+                                textarea.setSelectionRange(0, 0);
+                                // Mark as read-only temporarily
+                                textarea.readOnly = true;
+                              }
+                            }}
+                            onMouseUp={(e) => {
+                              e.stopPropagation();
+
+                              // Use a small delay to ensure all browser events complete
+                              setTimeout(() => {
+                                isDraggingRef.current = false;
+
+                                if (fullscreenTextareaRef.current) {
+                                  const textarea = fullscreenTextareaRef.current;
+
+                                  // Re-enable the textarea
+                                  textarea.style.userSelect = 'text';
+                                  textarea.style.webkitUserSelect = 'text';
+                                  textarea.style.pointerEvents = 'auto';
+                                  textarea.readOnly = false;
+
+                                  // Check and restore content if lost
+                                  if (tempDescription === '' && savedDescriptionRef.current !== '') {
+                                    setTempDescription(savedDescriptionRef.current);
+                                  }
+
+                                  // Ensure textarea is focused and ready
+                                  textarea.focus();
+                                }
+                              }, 50);
+                            }}
                             onClick={() => {
                               updateEvent('description', tempDescription);
                               setIsFullScreen(false);
@@ -3441,7 +3677,8 @@ Team will reconvene next week to review progress`;
                               setTempDescription('');
                               setFullScreenMode('editor');
                             }}
-                            className="px-5 py-2 text-sm font-medium bg-gray-900 text-white hover:bg-gray-800 rounded-lg transition-all duration-200 flex items-center gap-2"
+                            className="px-5 py-2 text-sm font-medium bg-gray-900 text-white hover:bg-gray-800 rounded-lg transition-all duration-200 flex items-center gap-2 select-none"
+                            style={{ userSelect: 'none' }}
                           >
                             Save Notes
                             <span className="text-[10px] opacity-90 font-normal">(⌘↵)</span>
