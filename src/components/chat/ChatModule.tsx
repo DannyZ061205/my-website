@@ -178,13 +178,14 @@ const MessageBubble: React.FC<{
 let _uid = 0;
 const uid = () => `${Date.now()}-${_uid++}`;
 
-export const ChatModule: React.FC<ChatModuleProps> = ({
+export const ChatModule: React.FC<ChatModuleProps & { onCollapse?: () => void }> = ({
   className = '',
   shouldAutoFocus = true,
   messages: controlledMessages,
   onMessagesChange,
   inputValue: controlledInputValue,
-  onInputChange
+  onInputChange,
+  onCollapse
 }) => {
   // Try to use ChatContext if available
   let contextValue: any;
@@ -537,6 +538,20 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
 
   return (
     <div className={`h-full bg-white flex flex-col ${className}`}>
+      {/* Collapse Button - Sidebar Icon */}
+      {onCollapse && (
+        <button
+          onClick={onCollapse}
+          className="absolute top-4 left-4 z-10 p-1.5 text-gray-400 hover:text-gray-600 transition-colors duration-200 rounded hover:bg-gray-100"
+          aria-label="Hide chat"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <line x1="9" y1="3" x2="9" y2="21" />
+          </svg>
+        </button>
+      )}
+
       {/* Messages Area */}
       <div
         className="relative flex-1 min-h-0 overflow-y-auto"  // <-- min-h-0 is important inside flex

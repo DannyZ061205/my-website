@@ -550,7 +550,19 @@ function ChronosAppContent() {
           >
             {/* Always show TodoModule on left in merged mode */}
             <div className="h-full flex flex-col">
-              <TodoModule className="flex-1" />
+              <TodoModule
+                className="flex-1"
+                onCollapse={() => {
+                  // In merged mode, collapse the left side of merged panel
+                  setMergedSeparatorPosition(0);
+                  setTimeout(() => {
+                    setPanelsMerged(false);
+                    setShowLeftPanel(false);
+                    setLeftPanelHidden(true);
+                    setLeftPanelWidth(0);
+                  }, 300);
+                }}
+              />
 
               {/* Profile Button at Bottom */}
               <div className="p-1.5">
@@ -613,6 +625,16 @@ function ChronosAppContent() {
                 <ChatModule
                   className="h-full"
                   shouldAutoFocus={false}
+                  onCollapse={() => {
+                    // In merged mode, collapse the right side of merged panel
+                    setMergedSeparatorPosition(100);
+                    setTimeout(() => {
+                      setPanelsMerged(false);
+                      setShowRightPanel(false);
+                      setRightPanelHidden(true);
+                      setRightPanelWidth(0);
+                    }, 300);
+                  }}
                 />
               </div>
 
@@ -793,7 +815,17 @@ function ChronosAppContent() {
           >
             {showLeftPanel && (
               <div className="h-full flex flex-col min-h-0">
-                <TodoModule className="flex-1" />
+                <TodoModule
+                  className="flex-1"
+                  onCollapse={() => {
+                    setShowLeftPanel(false);
+                    setLeftPanelCollapsing(true);
+                    setTimeout(() => {
+                      setLeftPanelCollapsing(false);
+                      setLeftPanelHidden(true);
+                    }, 300);
+                  }}
+                />
 
                 {/* Profile Button at Bottom */}
                 <div className="p-1.5">
@@ -1017,6 +1049,14 @@ function ChronosAppContent() {
                   <ChatModule
                     className="h-full"
                     shouldAutoFocus={false}
+                    onCollapse={() => {
+                      setShowRightPanel(false);
+                      setRightPanelCollapsing(true);
+                      setTimeout(() => {
+                        setRightPanelCollapsing(false);
+                        setRightPanelHidden(true);
+                      }, 300);
+                    }}
                   />
                 </div>
 

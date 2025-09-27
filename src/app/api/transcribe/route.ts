@@ -2,11 +2,23 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
-    // Check if API key is configured
+    // Security: Only allow POST requests from same origin
+    const origin = request.headers.get('origin');
+    const host = request.headers.get('host');
+
+    // In production, you should validate the origin more strictly
+    if (process.env.NODE_ENV === 'production' && origin && !origin.includes(host!)) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 403 }
+      );
+    }
+
+    // Check if API key is configured (NEVER send the key to client)
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey || apiKey === 'your-openai-api-key-here') {
       return NextResponse.json(
-        { error: 'OpenAI API key not configured. Please add your API key to .env.local' },
+        { error: 'Service not configured' }, // Generic error - don't reveal API key details
         { status: 500 }
       );
     }
@@ -41,10 +53,19 @@ export async function POST(request: NextRequest) {
       let errorMessage = 'Failed to transcribe audio';
       try {
         const error = await response.json();
-        console.error('OpenAI API error:', error);
-        errorMessage = error.error?.message || error.message || errorMessage;
+        // Log error but NEVER log the API key
+        console.error('Transcription failed:', response.status);
+
+        // Sanitize error messages to avoid exposing sensitive info
+        if (response.status === 401) {
+          errorMessage = 'Authentication failed';
+        } else if (response.status === 429) {
+          errorMessage = 'Rate limit exceeded';
+        } else {
+          errorMessage = error.error?.message || error.message || errorMessage;
+        }
       } catch (e) {
-        console.error('Failed to parse error response:', e);
+        console.error('Failed to parse error response');
       }
       return NextResponse.json(
         { error: errorMessage },
