@@ -764,12 +764,13 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
           isPlaying: false
         }]);
 
-        // Auto-scroll main container to bottom to show recordings
+        // Auto-scroll to bottom to show recordings
         setTimeout(() => {
-          const mainContainer = mainContainerRef.current;
-          if (mainContainer) {
-            mainContainer.scrollTo({
-              top: mainContainer.scrollHeight,
+          // If in editing mode, scroll the editor container
+          const scrollContainer = editorRef.current || mainContainerRef.current;
+          if (scrollContainer) {
+            scrollContainer.scrollTo({
+              top: scrollContainer.scrollHeight,
               behavior: 'smooth'
             });
           }
