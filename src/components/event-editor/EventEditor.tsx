@@ -109,6 +109,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   const [meetingCode, setMeetingCode] = useState<string>('');
 
   const editorRef = useRef<HTMLDivElement>(null);
+  const mainContainerRef = useRef<HTMLDivElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const descriptionTextareaRef = useRef<HTMLTextAreaElement>(null);
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -763,6 +764,17 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
           isPlaying: false
         }]);
 
+        // Auto-scroll main container to bottom to show recordings
+        setTimeout(() => {
+          const mainContainer = mainContainerRef.current;
+          if (mainContainer) {
+            mainContainer.scrollTo({
+              top: mainContainer.scrollHeight,
+              behavior: 'smooth'
+            });
+          }
+        }, 100);
+
         // Clear temporary recording data
         audioChunksRef.current = [];
         setCurrentRecordingId(null);
@@ -1105,8 +1117,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
 
   return (
     <div
-      ref={editorRef}
-      className={`${className} bg-white h-full border-l ${isNewEvent && !editedEvent.title ? 'border-yellow-400 animate-pulse' : 'border-gray-200'} p-4 relative z-40 flex flex-col ${recordings.length > 0 && isEditingDescription ? 'overflow-y-auto' : 'overflow-hidden'}`}
+      ref={mainContainerRef}
+      className={`${className} bg-white h-full border-l ${isNewEvent && !editedEvent.title ? 'border-yellow-400 animate-pulse' : 'border-gray-200'} p-4 relative z-40 flex flex-col overflow-y-auto`}
       onClick={(e) => {
         // If editing description and clicking on blank space within the editor, save it
         if (isEditingDescription) {
@@ -2260,12 +2272,13 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
         </div>
 
         {/* Description - extends to bottom */}
-        <div className={`${recordings.length > 0 && isEditingDescription ? 'flex flex-col mt-2' : 'flex-1 flex flex-col mt-2 min-h-0 overflow-hidden'}`}>
-          <div className={`relative w-full ${recordings.length > 0 && isEditingDescription ? 'flex flex-col' : 'flex-1 flex flex-col min-h-0 overflow-hidden'}`}>
-            {isEditingDescription ? (
-              <div className={`flex flex-col ${recordings.length > 0 ? '' : 'h-full'}`}>
-                {/* Formatting toolbar */}
-                <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+        <div className="flex-1 flex flex-col mt-2 mb-2 min-h-0">
+          {isEditingDescription ? (
+            <>
+              {/* Scrollable content container */}
+              <div className="overflow-y-auto flex-1" ref={editorRef}>
+                  {/* Formatting toolbar */}
+                  <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
                   <div className="flex items-center gap-1">
                     {/* Heading buttons */}
                     <button
@@ -2451,7 +2464,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                 </div>
 
                 {/* Textarea container */}
-                <div className={`${recordings.length > 0 ? 'flex flex-col' : 'flex-1 flex flex-col min-h-0'}`}>
+                <div className="flex flex-col">
                   <textarea
                     ref={descriptionTextareaRef}
                     value={tempDescription}
@@ -2474,7 +2487,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                         return;
                       }
                     }}
-                    className={`w-full ${recordings.length > 0 ? 'min-h-[250px]' : 'flex-1'} text-gray-700 bg-transparent px-4 py-3 outline-none focus:ring-0 resize-none text-sm font-mono`}
+                    className="w-full min-h-[250px] text-gray-700 bg-transparent px-4 py-3 outline-none focus:ring-0 resize-none text-sm font-mono"
                     placeholder="Add your notes • Supports markdown, LaTeX math ($x^2$), tables, code blocks..."
                   />
                 </div>
@@ -2592,124 +2605,10 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                     </div>
                   </div>
                 )}
-
-                {/* Action buttons */}
-                <div className="flex items-center justify-between p-3 border-t border-gray-200 bg-gray-50">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (!isEditingDescription) {
-                          setTempDescription(editedEvent.description || '');
-                        }
-                        const cursorPos = descriptionTextareaRef.current?.selectionStart || 0;
-                        const cursorEnd = descriptionTextareaRef.current?.selectionEnd || 0;
-                        setIsFullScreen(true);
-                        setTimeout(() => {
-                          const fullscreenTextarea = document.querySelector('.fullscreen-textarea') as HTMLTextAreaElement;
-                          if (fullscreenTextarea) {
-                            fullscreenTextarea.focus();
-                            fullscreenTextarea.setSelectionRange(cursorPos, cursorEnd);
-                          }
-                        }, 50);
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all duration-200 font-medium"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-                      </svg>
-                      Expand
-                    </button>
-
-                    {!isRecording && (
-                      <button
-                        type="button"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          e.nativeEvent.stopImmediatePropagation();
-                        }}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          e.nativeEvent.stopImmediatePropagation();
-                          startRecording();
-                        }}
-                        className="group flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 hover:border-red-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 shadow-sm hover:shadow"
-                        title="Start voice recording"
-                      >
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M12 15c1.66 0 3-1.34 3-3V6c0-1.66-1.34-3-3-3S9 4.34 9 6v6c0 1.66 1.34 3 3 3z"/>
-                          <path d="M17 12c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-                        </svg>
-                        <span>Record</span>
-                      </button>
-                    )}
-
-                    {isRecording && (
-                      <button
-                        type="button"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          e.nativeEvent.stopImmediatePropagation();
-                        }}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          e.nativeEvent.stopImmediatePropagation();
-                          stopRecording();
-                        }}
-                        className="relative flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 rounded-lg transition-all duration-200 shadow-md"
-                      >
-                        <div className="flex items-center gap-1.5">
-                          <div className="relative flex items-center justify-center">
-                            <div className="absolute w-3 h-3 bg-white rounded-full animate-ping"></div>
-                            <div className="relative w-2 h-2 bg-white rounded-full"></div>
-                          </div>
-                          <span className="font-mono">{formatRecordingTime(recordingTime)}</span>
-                        </div>
-                        <div className="h-3 w-px bg-white/30"></div>
-                        <div className="flex items-center gap-1">
-                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                            <rect x="6" y="6" width="12" height="12" rx="2" />
-                          </svg>
-                          <span>Stop</span>
-                        </div>
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        setIsEditingDescription(false);
-                        setTempDescription('');
-                      }}
-                      className="px-4 py-1.5 text-xs text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-200 font-medium"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        updateEvent('description', tempDescription);
-                        setIsEditingDescription(false);
-                        setTempDescription('');
-                      }}
-                      className="px-4 py-1.5 text-xs bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 font-medium flex items-center gap-1.5 shadow-sm"
-                      title="Save notes (Cmd+Enter)"
-                    >
-                      Confirm
-                      <span className="text-[10px] opacity-90 font-normal">(⌘↵)</span>
-                    </button>
-                  </div>
                 </div>
-              </div>
-            ) : (
+            </>
+          ) : (
+            <div className="relative w-full flex-1 flex flex-col min-h-0">
               <div className="w-full h-full animate-descriptionFadeIn overflow-hidden">
                 <div
                   onClick={(e) => {
@@ -2719,13 +2618,13 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                     const initialDescription = editedEvent.description || '';
                     setTempDescription(initialDescription);
 
-                    // Auto-scroll to bottom if there are recordings
+                    // Auto-scroll main container to bottom if there are recordings
                     if (recordings.length > 0) {
                       setTimeout(() => {
-                        const editor = editorRef.current;
-                        if (editor) {
-                          editor.scrollTo({
-                            top: editor.scrollHeight,
+                        const mainContainer = mainContainerRef.current;
+                        if (mainContainer) {
+                          mainContainer.scrollTo({
+                            top: mainContainer.scrollHeight,
                             behavior: 'smooth'
                           });
                         }
@@ -2791,7 +2690,114 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                   )}
                 </div>
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* Action bar - always at bottom */}
+        <div className="h-[28px] flex items-end justify-between px-0 -mb-1 bg-white">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!isEditingDescription) {
+                  setTempDescription(editedEvent.description || '');
+                }
+                const cursorPos = descriptionTextareaRef.current?.selectionStart || 0;
+                const cursorEnd = descriptionTextareaRef.current?.selectionEnd || 0;
+                setIsFullScreen(true);
+                setTimeout(() => {
+                  const fullscreenTextarea = document.querySelector('.fullscreen-textarea') as HTMLTextAreaElement;
+                  if (fullscreenTextarea) {
+                    fullscreenTextarea.focus();
+                    fullscreenTextarea.setSelectionRange(cursorPos, cursorEnd);
+                  }
+                }, 50);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all duration-200 font-medium"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+              </svg>
+              Expand
+            </button>
+
+            {!isRecording && (
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
+                  startRecording();
+                }}
+                className="group flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 hover:border-red-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 shadow-sm hover:shadow"
+                title="Start voice recording"
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 15c1.66 0 3-1.34 3-3V6c0-1.66-1.34-3-3-3S9 4.34 9 6v6c0 1.66 1.34 3 3 3z"/>
+                  <path d="M17 12c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                </svg>
+                <span>Record</span>
+              </button>
             )}
+            {isRecording && (
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
+                  stopRecording();
+                }}
+                className="group flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg animate-pulse"
+                title="Stop recording"
+              >
+                <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
+                <span>Stop Record</span>
+                <span className="text-[10px] opacity-80">{formatRecordingTime(recordingTime)}</span>
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setIsEditingDescription(false);
+                setTempDescription('');
+              }}
+              className="px-4 py-1.5 text-xs text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-200 font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isEditingDescription) {
+                  updateEvent('description', tempDescription);
+                  setIsEditingDescription(false);
+                  setTempDescription('');
+                }
+              }}
+              className="px-4 py-1.5 text-xs bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 font-medium flex items-center gap-1.5 shadow-sm"
+              title="Save notes (Cmd+Enter)"
+            >
+              Confirm
+              <span className="text-[10px] opacity-90 font-normal">(⌘↵)</span>
+            </button>
           </div>
         </div>
 
