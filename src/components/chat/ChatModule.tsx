@@ -98,7 +98,7 @@ const MessageBubble: React.FC<{
                 `}</style>
               </div>
             ) : (
-              message.content
+              <span style={{ whiteSpace: 'pre-wrap' }}>{message.content}</span>
             )}
           </div>
         ) : (
@@ -164,7 +164,7 @@ const MessageBubble: React.FC<{
                     `}</style>
                   </>
                 ) : (
-                  message.content
+                  <span style={{ whiteSpace: 'pre-wrap' }}>{message.content}</span>
                 )}
               </div>
             )}
@@ -537,7 +537,25 @@ export const ChatModule: React.FC<ChatModuleProps & { onCollapse?: () => void }>
   };
 
   return (
-    <div className={`h-full bg-white flex flex-col ${className}`}>
+    <div className={`h-full bg-white flex flex-col chat-container ${className}`}>
+      <style jsx global>{`
+        .chat-container ::-webkit-scrollbar,
+        .chat-container::-webkit-scrollbar,
+        .chat-messages::-webkit-scrollbar {
+          display: none !important;
+          width: 0 !important;
+          height: 0 !important;
+        }
+        .chat-container *,
+        .chat-container,
+        .chat-messages {
+          -ms-overflow-style: none !important;
+          scrollbar-width: none !important;
+        }
+        .chat-container * {
+          scrollbar-width: none !important;
+        }
+      `}</style>
       {/* Collapse Button - Sidebar Icon */}
       {onCollapse && (
         <button
@@ -554,7 +572,7 @@ export const ChatModule: React.FC<ChatModuleProps & { onCollapse?: () => void }>
 
       {/* Messages Area */}
       <div
-        className="relative flex-1 min-h-0 overflow-y-auto"  // <-- min-h-0 is important inside flex
+        className="relative flex-1 min-h-0 overflow-y-auto hide-scrollbar chat-messages"  // <-- min-h-0 is important inside flex
         ref={messagesContainerRef}
         onScroll={handleScroll}
       >
