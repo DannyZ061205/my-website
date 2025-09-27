@@ -2275,8 +2275,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
         <div className="flex-1 flex flex-col mt-2 mb-2 min-h-0">
           {isEditingDescription ? (
             <>
-              {/* Scrollable content container */}
-              <div className="overflow-y-auto flex-1" ref={editorRef}>
+              {/* Scrollable content container with border */}
+              <div className="overflow-y-auto flex-1 border border-gray-200 rounded-xl" ref={editorRef}>
                   {/* Formatting toolbar */}
                   <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
                   <div className="flex items-center gap-1">
