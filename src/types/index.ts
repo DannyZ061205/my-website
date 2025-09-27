@@ -41,6 +41,7 @@ export interface CalendarEvent {
   isVirtual?: boolean; // True if this is a dynamically generated occurrence
   parentId?: string; // ID of the base event for virtual occurrences
   justCreated?: boolean; // True only for brand new events, cleared after first save
+  recordings?: string; // JSON string of audio recordings data
 }
 
 export interface Goal {

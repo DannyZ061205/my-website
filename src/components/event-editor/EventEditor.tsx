@@ -53,6 +53,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   // Recording states
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [recordingStartTime, setRecordingStartTime] = useState<number>(0);
   const [recordings, setRecordings] = useState<Array<{
     id: string;
     blob: Blob;
@@ -201,6 +202,28 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
            (evt.recurrenceGroupId && !evt.isVirtual);
   }, []);
 
+  // Helper function to prepare event for saving with recordings
+  const prepareEventForSave = useCallback((eventToSave: CalendarEvent) => {
+    if (recordings.length > 0) {
+      // Convert recordings to a saveable format
+      const recordingsData = recordings.map(rec => ({
+        id: rec.id,
+        duration: rec.duration,
+        transcript: rec.transcript,
+        isPlaying: false,
+        isTranscribing: false,
+        // Store minimal data - in a real app, you'd store audio in cloud storage
+      }));
+      return {
+        ...eventToSave,
+        recordings: JSON.stringify(recordingsData)
+      };
+    }
+    // Clear recordings field if no recordings
+    const { recordings: _, ...eventWithoutRecordings } = eventToSave;
+    return eventWithoutRecordings;
+  }, [recordings]);
+
   // Define debouncedSave before any conditional returns
   const debouncedSave = useCallback(
     (updatedEvent: CalendarEvent) => {
@@ -233,10 +256,11 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
           }
         }
         // For non-recurring events, new events, or minor changes, save directly
-        onSave(eventToSave);
+        const eventWithRecordings = prepareEventForSave(eventToSave);
+        onSave(eventWithRecordings);
       }, 300); // Reduced debounce for better responsiveness
     },
-    [onSave, event, isRecurringEvent]
+    [onSave, event, isRecurringEvent, prepareEventForSave]
   );
 
   // Keep refs in sync with state
@@ -376,7 +400,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
       // Clear the justCreated flag before saving
       const eventToSave = { ...currentEvent };
       delete eventToSave.justCreated;
-      onSave(eventToSave);
+      const eventWithRecordings = prepareEventForSave(eventToSave);
+      onSave(eventWithRecordings);
     }
   }, [onSave, hasEventBeenModified]);
 
@@ -388,6 +413,20 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
         editedEvent.end !== event.end)) {
       setEditedEvent({ ...event });
       setLocalTitle(event.title || '');
+
+      // Load recordings from event if they exist
+      if (event.recordings) {
+        try {
+          const parsedRecordings = JSON.parse(event.recordings);
+          // Recreate recordings with simplified data (no blob restoration for now)
+          setRecordings(parsedRecordings);
+        } catch (error) {
+          console.error('Failed to parse recordings:', error);
+          setRecordings([]);
+        }
+      } else {
+        setRecordings([]);
+      }
 
       // For new events (justCreated), always clear the description/notes
       // For existing events, use their actual description
@@ -523,7 +562,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
           saveTimeout.current = null;
         }
         // Save immediately
-        onSave(currentEvent);
+        const eventWithRecordings = prepareEventForSave(currentEvent);
+        onSave(eventWithRecordings);
       }
 
       // Close the editor
@@ -649,7 +689,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
         if (currentEvent && tempDescriptionRef.current !== currentEvent.description) {
           const updatedEvent = { ...currentEvent, description: tempDescriptionRef.current };
           delete updatedEvent.justCreated;
-          onSave(updatedEvent);
+          const eventWithRecordings = prepareEventForSave(updatedEvent);
+          onSave(eventWithRecordings);
         }
       }
 
@@ -698,6 +739,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
 
       const recordingId = Date.now().toString();
       setCurrentRecordingId(recordingId);
+      const startTime = Date.now();
+      setRecordingStartTime(startTime);
 
       mediaRecorder.ondataavailable = (event) => {
         audioChunksRef.current.push(event.data);
@@ -706,7 +749,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
       mediaRecorder.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         const audioUrl = URL.createObjectURL(audioBlob);
-        const duration = recordingTime;
+        // Calculate actual duration in seconds
+        const duration = Math.round((Date.now() - startTime) / 1000);
 
         // Add new recording to the list
         setRecordings(prev => [...prev, {
@@ -729,6 +773,19 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
           setIsEditingDescription(true);
           const initialDescription = editedEvent?.description || '';
           setTempDescription(initialDescription);
+
+          // Auto-scroll to bottom if there are recordings
+          if (recordings.length > 0) {
+            setTimeout(() => {
+              const editor = editorRef.current;
+              if (editor) {
+                editor.scrollTo({
+                  top: editor.scrollHeight,
+                  behavior: 'smooth'
+                });
+              }
+            }, 100);
+          }
 
           if (editedEvent?.id && descriptionHistoriesStore.has(editedEvent.id)) {
             const stored = descriptionHistoriesStore.get(editedEvent.id)!;
@@ -754,10 +811,10 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
       setIsRecording(true);
       setRecordingTime(0);
 
-      // Start timer
+      // Start timer for display
       recordingIntervalRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
-      }, 1000);
+        setRecordingTime(Math.floor((Date.now() - startTime) / 1000));
+      }, 100); // Update more frequently for accurate display
     } catch (err) {
       console.error('Failed to start recording:', err);
       alert('Could not access microphone. Please check your permissions.');
@@ -967,6 +1024,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
     }
   };
 
+
   const updateEvent = (field: keyof CalendarEvent, value: any) => {
     if (!editedEvent) return;
 
@@ -992,11 +1050,13 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
       }
       // Save recurrence changes immediately for better UX
       if (saveTimeout.current) clearTimeout(saveTimeout.current);
-      onSave(updatedWithRecurrence);
+      const eventWithRecordings = prepareEventForSave(updatedWithRecurrence);
+      onSave(eventWithRecordings);
     } else if (field === 'title') {
       // Save title changes immediately without debounce for live preview
       if (saveTimeout.current) clearTimeout(saveTimeout.current);
-      onSave(updated);
+      const eventWithRecordings = prepareEventForSave(updated);
+      onSave(eventWithRecordings);
     } else {
       // Debounce other saves to prevent flickering and focus loss
       // The state update above will immediately update the UI
@@ -1100,7 +1160,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
               if (editedEventRef.current) {
                 const eventToSave = { ...editedEventRef.current };
                 delete eventToSave.justCreated; // Clear the flag now that user is done
-                onSave(eventToSave);
+                const eventWithRecordings = prepareEventForSave(eventToSave);
+                onSave(eventWithRecordings);
               }
 
               // Save the local title if changed
@@ -1155,7 +1216,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                   // Clear justCreated flag when saving
                   const eventToSave = { ...updatedEvent };
                   delete eventToSave.justCreated;
-                  onSave(eventToSave);
+                  const eventWithRecordings = prepareEventForSave(eventToSave);
+                  onSave(eventWithRecordings);
                   // Blur the input to remove focus
                   if (titleInputRef.current) {
                     titleInputRef.current.blur();
@@ -1185,7 +1247,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                   // Clear justCreated flag when saving
                   const eventToSave = { ...updatedEvent };
                   delete eventToSave.justCreated;
-                  onSave(eventToSave);
+                  const eventWithRecordings = prepareEventForSave(eventToSave);
+                  onSave(eventWithRecordings);
                 }
                 onCancel();
               }
@@ -2655,6 +2718,20 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                     setIsEditingDescription(true);
                     const initialDescription = editedEvent.description || '';
                     setTempDescription(initialDescription);
+
+                    // Auto-scroll to bottom if there are recordings
+                    if (recordings.length > 0) {
+                      setTimeout(() => {
+                        const editor = editorRef.current;
+                        if (editor) {
+                          editor.scrollTo({
+                            top: editor.scrollHeight,
+                            behavior: 'smooth'
+                          });
+                        }
+                      }, 100);
+                    }
+
                     setTimeout(() => {
                       if (descriptionTextareaRef.current) {
                         descriptionTextareaRef.current.focus();
