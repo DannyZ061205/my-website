@@ -510,6 +510,8 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
     city: 'NYC',
     offset: 'GMT-4'
   });
+  const [showTimezoneDropdown, setShowTimezoneDropdown] = useState(false);
+  const timezoneButtonRef = useRef<HTMLButtonElement>(null);
   const [internalEvents, setInternalEvents] = useState<CalendarEvent[]>([]);
   const [internalDeletingEventIds, setInternalDeletingEventIds] = useState<Set<string>>(new Set());
 
@@ -650,6 +652,22 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
     const interval = setInterval(updateTime, 60000); // Update every minute
     return () => clearInterval(interval);
   }, []);
+
+  // Close timezone dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (timezoneButtonRef.current && !timezoneButtonRef.current.contains(event.target as Node)) {
+        setShowTimezoneDropdown(false);
+      }
+    };
+
+    if (showTimezoneDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showTimezoneDropdown]);
 
   const hours = Array.from({ length: 24 }, (_, i) => i);
   const weekDays = showOnlyToday || showOnlyTimeColumn
@@ -2552,10 +2570,66 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
       <div className="flex-1 overflow-hidden flex flex-col">
         {/* Fixed timezone header and weekday headers */}
         <div className="flex bg-white border-b border-blue-200" style={{ height: '60px' }}>
-          {/* Timezone header - fixed position */}
-          <div className={`flex-shrink-0 flex flex-col justify-center items-center bg-white border-r border-blue-200 transition-all duration-300`} style={{ width: '72px' }}>
-            <div className="text-xs font-bold text-blue-600">{userTimezone.city}</div>
-            <div className="text-[10px] text-blue-500">({userTimezone.offset})</div>
+          {/* Timezone header - clickable button */}
+          <div className="flex-shrink-0 relative" style={{ width: '72px' }}>
+            <button
+              ref={timezoneButtonRef}
+              onClick={() => setShowTimezoneDropdown(!showTimezoneDropdown)}
+              className="w-full h-full flex flex-col justify-center items-center bg-white border-r border-blue-200 transition-all duration-200 hover:bg-blue-50 cursor-pointer"
+            >
+              <div className="text-xs font-bold text-blue-600">{userTimezone.city}</div>
+              <div className="text-[10px] text-blue-500">({userTimezone.offset})</div>
+            </button>
+
+            {/* Timezone dropdown */}
+            {showTimezoneDropdown && (
+              <div className="absolute top-full left-0 mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-200 z-50 max-h-96 overflow-y-auto">
+                <div className="p-2">
+                  <div className="text-xs font-semibold text-gray-600 px-2 py-1">Select Timezone</div>
+                  {[
+                    { city: 'NYC', offset: 'GMT-4', fullName: 'New York' },
+                    { city: 'LAX', offset: 'GMT-7', fullName: 'Los Angeles' },
+                    { city: 'CHI', offset: 'GMT-5', fullName: 'Chicago' },
+                    { city: 'LON', offset: 'GMT+1', fullName: 'London' },
+                    { city: 'PAR', offset: 'GMT+2', fullName: 'Paris' },
+                    { city: 'BER', offset: 'GMT+2', fullName: 'Berlin' },
+                    { city: 'MOW', offset: 'GMT+3', fullName: 'Moscow' },
+                    { city: 'DXB', offset: 'GMT+4', fullName: 'Dubai' },
+                    { city: 'BOM', offset: 'GMT+5:30', fullName: 'Mumbai' },
+                    { city: 'HKG', offset: 'GMT+8', fullName: 'Hong Kong' },
+                    { city: 'SHA', offset: 'GMT+8', fullName: 'Shanghai' },
+                    { city: 'SIN', offset: 'GMT+8', fullName: 'Singapore' },
+                    { city: 'TYO', offset: 'GMT+9', fullName: 'Tokyo' },
+                    { city: 'SEL', offset: 'GMT+9', fullName: 'Seoul' },
+                    { city: 'SYD', offset: 'GMT+11', fullName: 'Sydney' },
+                    { city: 'MEL', offset: 'GMT+11', fullName: 'Melbourne' },
+                    { city: 'AKL', offset: 'GMT+13', fullName: 'Auckland' },
+                    { city: 'SAO', offset: 'GMT-3', fullName: 'São Paulo' },
+                    { city: 'MEX', offset: 'GMT-5', fullName: 'Mexico City' },
+                    { city: 'TOR', offset: 'GMT-4', fullName: 'Toronto' },
+                    { city: 'VAN', offset: 'GMT-7', fullName: 'Vancouver' },
+                    { city: 'JNB', offset: 'GMT+2', fullName: 'Johannesburg' },
+                    { city: 'CAI', offset: 'GMT+2', fullName: 'Cairo' }
+                  ].map((tz) => (
+                    <button
+                      key={tz.city}
+                      onClick={() => {
+                        setUserTimezone({ city: tz.city, offset: tz.offset });
+                        setShowTimezoneDropdown(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-sm rounded hover:bg-blue-50 transition-colors ${
+                        userTimezone.city === tz.city ? 'bg-blue-100 text-blue-700' : 'text-gray-700'
+                      }`}
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium">{tz.fullName}</span>
+                        <span className="text-xs text-gray-500">{tz.offset}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           {/* Weekday headers - fixed position */}
           <div className={`flex-1 transition-all duration-300 flex opacity-100`}>
@@ -2824,26 +2898,16 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
                     {/* Red line across entire calendar width */}
                     <div className="absolute left-0 right-0 h-0.5 bg-red-500" />
 
-                    {/* Additional lines for today's column to make it appear thicker */}
+                    {/* Thicker horizontal line for today's column - same vertical position */}
                     {weekDates.some(date => date.toDateString() === todayDateString) && (
-                      <>
-                        {/* Line above - directly touching the main line */}
-                        <div
-                          className="absolute h-0.5 bg-red-500 -top-0.5"
-                          style={{
-                            left: `${weekDates.findIndex(date => date.toDateString() === todayDateString) * (100 / weekDates.length)}%`,
-                            width: `${100 / weekDates.length}%`
-                          }}
-                        />
-                        {/* Line below - directly touching the main line */}
-                        <div
-                          className="absolute h-0.5 bg-red-500 top-0.5"
-                          style={{
-                            left: `${weekDates.findIndex(date => date.toDateString() === todayDateString) * (100 / weekDates.length)}%`,
-                            width: `${100 / weekDates.length}%`
-                          }}
-                        />
-                      </>
+                      <div
+                        className="absolute h-1 bg-red-500"
+                        style={{
+                          left: `${weekDates.findIndex(date => date.toDateString() === todayDateString) * (100 / weekDates.length)}%`,
+                          width: `${100 / weekDates.length}%`,
+                          top: '-1px'  // Center align with the 2px main line
+                        }}
+                      />
                     )}
                   </div>
                 );

@@ -222,17 +222,17 @@ div[class*="Calendar"]::-webkit-scrollbar:horizontal,
 
 /* Delightful button states */
 .btn-playful {
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: all 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
 }
 
 .btn-playful:hover {
-  transform: scale(1.05) translateY(-1px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  transform: scale(1.02) translateY(-0.5px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .btn-playful:active {
-  transform: scale(0.98) translateY(0px);
-  transition: all 0.1s ease;
+  transform: scale(0.99) translateY(0px);
+  transition: all 0.05s ease;
 }
 
 /* Empty state animations */
@@ -769,7 +769,7 @@ div[class*="Calendar"]::-webkit-scrollbar:horizontal,
     transform: scale(1);
   }
   50% {
-    transform: scale(0.95);
+    transform: scale(0.98);
   }
   100% {
     transform: scale(1);
@@ -909,7 +909,7 @@ div[class*="Calendar"]::-webkit-scrollbar:horizontal,
 }
 
 .button-press:active {
-  animation: button-press 0.1s ease-out;
+  animation: button-press 0.08s ease-out;
 }
 
 .today-highlight {

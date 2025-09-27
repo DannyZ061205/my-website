@@ -11,6 +11,9 @@ import { DeleteRecurringModal } from '../calendar/DeleteRecurringModal';
 import { EditRecurringPropertiesModal } from '../calendar/EditRecurringPropertiesModal';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 
 // Global store for description histories that persist across editor sessions
 const descriptionHistoriesStore = new Map<string, { history: string[], index: number }>();
@@ -56,7 +59,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   const mouseVelocityRef = useRef({ x: 0, y: 0, lastX: 0, lastY: 0, lastTime: Date.now() });
   const hideControlsTimerRef = useRef<NodeJS.Timeout | null>(null);
   const VELOCITY_THRESHOLD = 1; // pixels per millisecond (more sensitive)
-  const HIDE_DELAY = 3000; // 3 seconds
+  const HIDE_DELAY = 1000; // 1 second
 
   // Preview width control sliders
   const DEFAULT_PREVIEW_WIDTH = 60; // default width percentage
@@ -446,7 +449,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
       }
 
       // If we're editing description and clicking outside, save it first
-      if (isEditingDescription) {
+      // BUT skip this if we're in fullscreen mode
+      if (isEditingDescription && !isFullScreen) {
         updateEvent('description', tempDescription);
         setIsEditingDescription(false);
         setTempDescription('');
@@ -505,12 +509,14 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (isEditingDescription) {
-          // If editing description, just cancel the description edit
+        if (isEditingDescription && !isFullScreen) {
+          // If editing description in normal mode, cancel and clear
           setIsEditingDescription(false);
           setTempDescription('');
         } else if (isFullScreen) {
+          // If in fullscreen, just exit without clearing content
           setIsFullScreen(false);
+          setFullScreenMode('editor');
         } else {
           // Just close the editor - deletion handled when new action starts
           onCancel();
@@ -2163,6 +2169,37 @@ Team will reconvene next week to review progress`;
                       H3
                     </button>
 
+                    {/* Separator button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const textarea = descriptionTextareaRef.current;
+                        if (textarea) {
+                          const start = textarea.selectionStart;
+                          const end = textarea.selectionEnd;
+
+                          // Check if we're at the start of a line
+                          const textBeforeCursor = tempDescription.substring(0, start);
+                          const needsNewlineBefore = start > 0 && !textBeforeCursor.endsWith('\n\n');
+
+                          // Insert separator with double line break before (enter + enter + "---" + enter)
+                          const separator = `${needsNewlineBefore ? '\n\n' : ''}---\n`;
+                          const newDescription = tempDescription.substring(0, start) + separator + tempDescription.substring(end);
+                          setTempDescription(newDescription);
+
+                          setTimeout(() => {
+                            textarea.focus();
+                            const newPos = start + separator.length;
+                            textarea.setSelectionRange(newPos, newPos);
+                          }, 0);
+                        }
+                      }}
+                      className="px-2 py-1 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition-colors font-mono"
+                      title="Horizontal rule"
+                    >
+                      —
+                    </button>
+
                     <div className="w-px h-4 bg-gray-300 mx-1" />
 
                     {/* Text formatting buttons */}
@@ -2553,7 +2590,7 @@ Team will reconvene next week to review progress`;
                       }
                     }}
                     className="w-full flex-1 text-gray-700 bg-transparent px-4 py-3 outline-none focus:ring-0 resize-none text-sm min-h-0 overflow-y-auto font-mono"
-                    placeholder="Add your notes in markdown • Use ChatGPT's copy button to preserve formatting..."
+                    placeholder="Add your notes • Supports markdown, LaTeX math ($x^2$), tables, code blocks..."
                   />
                 </div>
                 <div className="flex items-center justify-between mt-3 px-1">
@@ -2561,6 +2598,11 @@ Team will reconvene next week to review progress`;
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        // If we're already editing, tempDescription should have the latest content
+                        // If not editing yet, initialize it from the saved description
+                        if (!isEditingDescription) {
+                          setTempDescription(editedEvent.description || '');
+                        }
                         // Save cursor position before expanding
                         const cursorPos = descriptionTextareaRef.current?.selectionStart || 0;
                         const cursorEnd = descriptionTextareaRef.current?.selectionEnd || 0;
@@ -2763,7 +2805,8 @@ Team will reconvene next week to review progress`;
                     style={{ pointerEvents: 'auto' }}
                   >
                     <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
+                      remarkPlugins={[remarkGfm, remarkMath]}
+                      rehypePlugins={[rehypeKatex]}
                       components={{
                         a: ({ children, href, ...props }) => (
                           <span
@@ -2789,7 +2832,7 @@ Team will reconvene next week to review progress`;
                       Click to add notes
                     </span>
                     <span className="text-xs text-gray-400 mt-2 leading-relaxed max-w-[280px]">
-                      Supports Markdown • Tables • Lists • Code blocks
+                      Supports Markdown • LaTeX Math • Tables • Lists • Code blocks
                     </span>
                     <div className="flex items-center gap-1.5 mt-3 px-3 py-1.5 bg-gradient-to-r from-green-50 to-blue-50 rounded-full border border-green-200/50">
                       <svg className="w-3.5 h-3.5 text-green-600" fill="currentColor" viewBox="0 0 24 24">
@@ -2915,6 +2958,11 @@ Team will reconvene next week to review progress`;
                 id="event-editor-portal"
                 className="fixed inset-0 z-[9999]"
                 onMouseMove={handleMouseMove}
+                onKeyDown={(e) => {
+                  // Stop all keyboard events from bubbling to the document/calendar
+                  // The textarea will handle its own keyboard events
+                  e.stopPropagation();
+                }}
               >
                 {/* Backdrop */}
                 <div
@@ -2927,7 +2975,25 @@ Team will reconvene next week to review progress`;
                   <div className="w-full h-full flex flex-col">
 
                       {/* Simple mode toggle - floating in top right corner */}
-                      <div className={`fixed top-4 right-4 flex items-center gap-2 z-50 transition-all duration-1000 ease-in-out ${showFullscreenControls ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`}>
+                      <div
+                        className={`fixed top-4 right-4 flex items-center gap-2 z-50 transition-opacity duration-300 ease-out ${showFullscreenControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                        onMouseEnter={() => {
+                          // Keep controls visible when hovering
+                          if (hideControlsTimerRef.current) {
+                            clearTimeout(hideControlsTimerRef.current);
+                          }
+                          setShowFullscreenControls(true);
+                        }}
+                        onMouseLeave={() => {
+                          // Start hide timer when mouse leaves
+                          if (hideControlsTimerRef.current) {
+                            clearTimeout(hideControlsTimerRef.current);
+                          }
+                          hideControlsTimerRef.current = setTimeout(() => {
+                            setShowFullscreenControls(false);
+                          }, HIDE_DELAY);
+                        }}
+                      >
                         <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 relative p-1">
                           {/* Sliding indicator background */}
                           <div
@@ -2942,10 +3008,10 @@ Team will reconvene next week to review progress`;
                             <button
                               id="fullscreen-edit-btn"
                               onClick={() => setFullScreenMode('editor')}
-                              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-200 flex items-center gap-2 relative z-10 ${
+                              className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 flex items-center gap-2 relative z-10 ${
                                 fullScreenMode === 'editor'
                                   ? 'text-white'
-                                  : 'text-gray-600 hover:text-gray-900'
+                                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                               }`}
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2956,10 +3022,10 @@ Team will reconvene next week to review progress`;
                             <button
                               id="fullscreen-preview-btn"
                               onClick={() => setFullScreenMode('preview')}
-                              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-200 flex items-center gap-2 relative z-10 ${
+                              className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 flex items-center gap-2 relative z-10 ${
                                 fullScreenMode === 'preview'
                                   ? 'text-white'
-                                  : 'text-gray-600 hover:text-gray-900'
+                                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                               }`}
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2984,7 +3050,25 @@ Team will reconvene next week to review progress`;
 
                       {/* Formatting toolbar for editor mode */}
                       {fullScreenMode === 'editor' && (
-                        <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 px-2 py-2 flex items-center gap-0.5 z-40 transition-all duration-1000 ease-in-out ${showFullscreenControls ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}>
+                        <div
+                          className={`fixed top-4 left-1/2 transform -translate-x-1/2 bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 px-2 py-2 flex items-center gap-0.5 z-40 transition-opacity duration-300 ease-out ${showFullscreenControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                          onMouseEnter={() => {
+                            // Keep toolbar visible when hovering
+                            if (hideControlsTimerRef.current) {
+                              clearTimeout(hideControlsTimerRef.current);
+                            }
+                            setShowFullscreenControls(true);
+                          }}
+                          onMouseLeave={() => {
+                            // Start hide timer when mouse leaves
+                            if (hideControlsTimerRef.current) {
+                              clearTimeout(hideControlsTimerRef.current);
+                            }
+                            hideControlsTimerRef.current = setTimeout(() => {
+                              setShowFullscreenControls(false);
+                            }, HIDE_DELAY);
+                          }}
+                        >
                           {/* Heading buttons */}
                           <button
                             type="button"
@@ -3063,6 +3147,37 @@ Team will reconvene next week to review progress`;
                             title="Heading 3"
                           >
                             H3
+                          </button>
+
+                          {/* Separator button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const textarea = document.querySelector('.fullscreen-textarea') as HTMLTextAreaElement;
+                              if (textarea) {
+                                const start = textarea.selectionStart;
+                                const end = textarea.selectionEnd;
+
+                                // Check if we're at the start of a line
+                                const textBeforeCursor = tempDescription.substring(0, start);
+                                const needsNewlineBefore = start > 0 && !textBeforeCursor.endsWith('\n\n');
+
+                                // Insert separator with double line break before (enter + enter + "---" + enter)
+                                const separator = `${needsNewlineBefore ? '\n\n' : ''}---\n`;
+                                const newDescription = tempDescription.substring(0, start) + separator + tempDescription.substring(end);
+                                setTempDescription(newDescription);
+
+                                setTimeout(() => {
+                                  textarea.focus();
+                                  const newPos = start + separator.length;
+                                  textarea.setSelectionRange(newPos, newPos);
+                                }, 0);
+                              }
+                            }}
+                            className="px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-all duration-200 font-mono"
+                            title="Horizontal rule"
+                          >
+                            —
                           </button>
 
                           <div className="w-px h-5 bg-gray-300 mx-1" />
@@ -3237,6 +3352,7 @@ Team will reconvene next week to review progress`;
                               // Handle Cmd/Ctrl+Z for undo and Cmd/Ctrl+Shift+Z for redo
                               if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
                                 e.preventDefault();
+                                e.stopPropagation(); // Prevent calendar from handling this
                                 if (descriptionHistoryIndex > 0) {
                                   const newIndex = descriptionHistoryIndex - 1;
                                   setDescriptionHistoryIndex(newIndex);
@@ -3247,6 +3363,7 @@ Team will reconvene next week to review progress`;
 
                               if ((e.metaKey || e.ctrlKey) && ((e.key === 'z' && e.shiftKey) || e.key === 'y')) {
                                 e.preventDefault();
+                                e.stopPropagation(); // Prevent calendar from handling this
                                 if (descriptionHistoryIndex < descriptionHistory.length - 1) {
                                   const newIndex = descriptionHistoryIndex + 1;
                                   setDescriptionHistoryIndex(newIndex);
@@ -3258,6 +3375,7 @@ Team will reconvene next week to review progress`;
                               // Check for Cmd+Enter (Mac) or Ctrl+Enter (Windows/Linux)
                               if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
                                 e.preventDefault();
+                                e.stopPropagation(); // Prevent any parent handlers
                                 updateEvent('description', tempDescription);
                                 setIsEditingDescription(false);
                                 setTempDescription('');
@@ -3353,7 +3471,10 @@ Team will reconvene next week to review progress`;
                                 >
                                 <div className="markdown-content prose prose-xl max-w-none text-gray-800 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol_ol]:list-[lower-alpha] [&_ol_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_ul_ul]:list-circle [&_ul_ul]:pl-5">
                                 {tempDescription ? (
-                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                  <ReactMarkdown
+                                    remarkPlugins={[remarkGfm, remarkMath]}
+                                    rehypePlugins={[rehypeKatex]}
+                                  >
                                     {tempDescription}
                                   </ReactMarkdown>
                                 ) : (
@@ -3372,12 +3493,31 @@ Team will reconvene next week to review progress`;
                       </div>
 
                       {/* Minimal footer - just save/cancel */}
-                      <div className={`fixed bottom-4 left-1/2 transform -translate-x-1/2 flex items-center justify-center gap-3 z-30 transition-all duration-1000 ease-in-out ${showFullscreenControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
-                        <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 px-2 py-2 flex items-center gap-2">
+                      <div className={`fixed bottom-4 left-1/2 transform -translate-x-1/2 flex items-center justify-center gap-3 z-30 transition-opacity duration-300 ease-out ${showFullscreenControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                        <div
+                          className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 px-2 py-2 flex items-center gap-2"
+                          onMouseEnter={() => {
+                            if (hideControlsTimerRef.current) {
+                              clearTimeout(hideControlsTimerRef.current);
+                            }
+                            setShowFullscreenControls(true);
+                          }}
+                          onMouseLeave={() => {
+                            if (hideControlsTimerRef.current) {
+                              clearTimeout(hideControlsTimerRef.current);
+                            }
+                            hideControlsTimerRef.current = setTimeout(() => {
+                              setShowFullscreenControls(false);
+                            }, HIDE_DELAY);
+                          }}
+                        >
                           <button
                             onClick={() => {
+                              // Don't clear tempDescription when just closing fullscreen
+                              // The user might want to continue editing in normal mode
                               setIsFullScreen(false);
                               setFullScreenMode('editor');
+                              // Don't clear tempDescription here
                             }}
                             className="px-5 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all duration-200"
                           >
@@ -3391,7 +3531,7 @@ Team will reconvene next week to review progress`;
                               setTempDescription('');
                               setFullScreenMode('editor');
                             }}
-                            className="px-5 py-2 text-sm font-medium bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-sm flex items-center gap-2"
+                            className="px-5 py-2 text-sm font-medium bg-gray-900 text-white hover:bg-gray-800 rounded-lg transition-all duration-200 flex items-center gap-2"
                           >
                             Save Notes
                             <span className="text-[10px] opacity-90 font-normal">(⌘↵)</span>
