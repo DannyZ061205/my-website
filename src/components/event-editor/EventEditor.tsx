@@ -2069,8 +2069,8 @@ Team will reconvene next week to review progress`;
         </div>
 
         {/* Description - extends to bottom */}
-        <div className="flex-1 flex flex-col mt-2 min-h-0">
-          <div className="relative w-full flex-1 flex flex-col min-h-0">
+        <div className="flex-1 flex flex-col mt-2 min-h-0 overflow-hidden">
+          <div className="relative w-full flex-1 flex flex-col min-h-0 overflow-hidden">
             {isEditingDescription ? (
               <div className="w-full flex-1 flex flex-col">
                 <div className="w-full flex-1 border-2 border-blue-200 rounded-xl overflow-hidden flex flex-col shadow-lg bg-white animate-descriptionFadeIn">
@@ -2745,7 +2745,7 @@ Team will reconvene next week to review progress`;
                 </div>
               </div>
             ) : (
-              <div className="w-full flex-1 animate-descriptionFadeIn">
+              <div className="w-full h-full animate-descriptionFadeIn overflow-hidden">
                 <div
                   onMouseDown={(e) => {
                     // Prevent any default mouse behavior
@@ -2848,103 +2848,6 @@ Team will reconvene next week to review progress`;
                     </div>
                   </div>
                 )}
-
-                {/* Recording buttons - show below content */}
-                <div className="flex items-center justify-center gap-2 mt-3 px-1">
-                  {!isRecording && !hasRecording && (
-                    <button
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.nativeEvent.stopImmediatePropagation();
-                        startRecording();
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 hover:text-red-600 hover:bg-red-50 border border-gray-200 hover:border-red-200 rounded-lg transition-all duration-200 font-medium"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 15c1.66 0 3-1.34 3-3V6c0-1.66-1.34-3-3-3S9 4.34 9 6v6c0 1.66 1.34 3 3 3z"/>
-                        <path d="M17 12c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-                      </svg>
-                      Start Recording
-                    </button>
-                  )}
-
-                  {isRecording && (
-                    <button
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.nativeEvent.stopImmediatePropagation();
-                        stopRecording();
-                      }}
-                      className="flex items-center gap-2 px-3 py-1.5 text-xs text-white bg-red-500 hover:bg-red-600 rounded-lg transition-all duration-200 font-medium animate-pulse"
-                    >
-                      <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-                      Recording {formatRecordingTime(recordingTime)}
-                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                        <rect x="6" y="6" width="12" height="12" rx="2" />
-                      </svg>
-                    </button>
-                  )}
-
-                  {hasRecording && !isTranscribing && (
-                    <>
-                      <button
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                        }}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          e.nativeEvent.stopImmediatePropagation();
-                          setHasRecording(false);
-                          setRecordingTime(0);
-                          audioChunksRef.current = [];
-                        }}
-                        className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-100 border border-gray-200 rounded-lg transition-all duration-200 font-medium"
-                      >
-                        Discard
-                      </button>
-                      <button
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                        }}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          e.nativeEvent.stopImmediatePropagation();
-                          transcribeRecording();
-                        }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-lg transition-all duration-200 font-medium shadow-sm"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M20.5 2h-17A1.5 1.5 0 002 3.5v17A1.5 1.5 0 003.5 22h17a1.5 1.5 0 001.5-1.5v-17A1.5 1.5 0 0020.5 2zM8 13.65l1.75-3.48a.5.5 0 01.45-.27h.05a.5.5 0 01.44.32l1.2 3.85 1.92-7.72a.5.5 0 01.49-.38.5.5 0 01.48.4l1.28 6.88 1.08-2.16a.5.5 0 01.45-.28H19v1h-1.08l-1.56 3.12a.5.5 0 01-.47.28h-.02a.5.5 0 01-.46-.34l-1.31-7-1.93 7.73a.5.5 0 01-.48.38h-.01a.5.5 0 01-.48-.35l-1.38-4.42L8.52 14.3a.5.5 0 01-.95-.08l-.77-3.08H5v-1h2.3a.5.5 0 01.49.38L8 11.37z"/>
-                        </svg>
-                        AI Transcribe
-                      </button>
-                    </>
-                  )}
-
-                  {isTranscribing && (
-                    <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-blue-600">
-                      <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Transcribing...
-                    </div>
-                  )}
-                </div>
                 </div>
               </div>
             )}
