@@ -870,10 +870,12 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
       closeContextMenu();
     }
 
-    // Close the event editor when clicking on blank space
+    // Close the event editor and deselect when clicking on blank space
     if (onCloseEvent) {
       onCloseEvent();
     }
+    // Also clear the focused event to remove selection animation
+    setFocusedEventId(null);
 
     // Don't auto-delete any events - let the user decide
     // Empty events should persist until the user explicitly deletes them
