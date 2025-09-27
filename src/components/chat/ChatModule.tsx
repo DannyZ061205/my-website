@@ -23,6 +23,7 @@ export interface Message {
   content: string;
   sender: 'user' | 'assistant';
   timestamp: Date;
+  isLoading?: boolean;
 }
 
 const MessageBubble: React.FC<{
@@ -47,28 +48,93 @@ const MessageBubble: React.FC<{
   }, [shouldAnimate, onAnimationComplete, isUser, isTyping, words.length]);
 
   return (
-    <div className={`group mb-6 ${isUser ? 'flex justify-end' : 'flex justify-start'}`}>
+    <div
+      className={`group mb-6 ${isUser ? 'flex justify-end' : 'flex justify-start'}`}
+      style={{
+        animation: 'fadeInUp 0.4s ease-out forwards',
+        opacity: 0
+      }}
+    >
       <div className={isUser ? "max-w-[70%]" : "w-full"}>
         {isUser ? (
           <div
             className="inline-block px-4 py-2.5 rounded-2xl text-sm bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-sm"
             style={{ wordBreak: 'break-all', overflowWrap: 'anywhere', maxWidth: '100%' }}
           >
-            {message.content}
+            {message.isLoading ? (
+              <div className="flex items-center space-x-1.5 py-1">
+                <div
+                  className="w-2 h-2 bg-white/90 rounded-full animate-pulse-scale"
+                  style={{
+                    animationDelay: '0ms',
+                    animation: 'pulseScale 1.4s infinite ease-in-out'
+                  }}
+                ></div>
+                <div
+                  className="w-2 h-2 bg-white/90 rounded-full animate-pulse-scale"
+                  style={{
+                    animationDelay: '200ms',
+                    animation: 'pulseScale 1.4s infinite ease-in-out 0.2s'
+                  }}
+                ></div>
+                <div
+                  className="w-2 h-2 bg-white/90 rounded-full animate-pulse-scale"
+                  style={{
+                    animationDelay: '400ms',
+                    animation: 'pulseScale 1.4s infinite ease-in-out 0.4s'
+                  }}
+                ></div>
+                <style jsx>{`
+                  @keyframes pulseScale {
+                    0%, 80%, 100% {
+                      transform: scale(1);
+                      opacity: 0.5;
+                    }
+                    40% {
+                      transform: scale(1.3);
+                      opacity: 1;
+                    }
+                  }
+                `}</style>
+              </div>
+            ) : (
+              message.content
+            )}
           </div>
         ) : (
           <div className="text-sm text-gray-700 leading-relaxed break-words">
             {isTyping ? (
-              <div className="flex items-center space-x-1 py-2">
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
+              <div className="flex items-center space-x-1.5 py-2">
                 <div
-                  className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                  style={{ animationDelay: '0.1s' }}
+                  className="w-2 h-2 bg-gray-500 rounded-full"
+                  style={{
+                    animation: 'pulseScaleGray 1.4s infinite ease-in-out'
+                  }}
                 />
                 <div
-                  className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                  style={{ animationDelay: '0.2s' }}
+                  className="w-2 h-2 bg-gray-500 rounded-full"
+                  style={{
+                    animation: 'pulseScaleGray 1.4s infinite ease-in-out 0.2s'
+                  }}
                 />
+                <div
+                  className="w-2 h-2 bg-gray-500 rounded-full"
+                  style={{
+                    animation: 'pulseScaleGray 1.4s infinite ease-in-out 0.4s'
+                  }}
+                />
+                <style jsx>{`
+                  @keyframes pulseScaleGray {
+                    0%, 80%, 100% {
+                      transform: scale(1);
+                      opacity: 0.3;
+                    }
+                    40% {
+                      transform: scale(1.3);
+                      opacity: 1;
+                    }
+                  }
+                `}</style>
               </div>
             ) : (
               <div>
@@ -169,6 +235,13 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
   }, [onInputChange, contextValue]);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // Recording states
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -307,6 +380,161 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
     }
   };
 
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+
+      // Start recording timer
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    } catch (error) {
+      console.error('Error accessing microphone:', error);
+      alert('Please allow microphone access to use voice recording.');
+    }
+  };
+
+  const stopRecording = async () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+
+      // Clear the timer
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
+      }
+
+      setIsRecording(false);
+
+      // Add a loading message with three dots animation immediately
+      const loadingId = `loading-${uid()}`;
+      const loadingMessage: Message = {
+        id: loadingId,
+        content: '···', // Three dots for loading
+        sender: 'user',
+        timestamp: new Date(),
+        isLoading: true, // Custom flag for loading state
+      };
+      setMessages(prev => [...prev, loadingMessage]);
+
+      // Force scroll to bottom to show loading message
+      setIsAtBottom(true);
+      scrollToBottom();
+
+      // Wait a bit to ensure all audio chunks are collected
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Create audio blob from chunks
+      const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+
+      // Create FormData and send to Whisper API
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'recording.webm');
+
+      try {
+        const response = await fetch('/api/transcribe', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.text) {
+            // Replace the loading message with the actual transcribed text
+            setMessages(prev => prev.map(msg =>
+              msg.id === loadingId
+                ? { ...msg, content: data.text, isLoading: false }
+                : msg
+            ));
+
+            // Clear the input value since we're auto-sending
+            setInputValue('');
+
+            // Set generating state for AI response
+            setIsGenerating(true);
+
+            // Add AI typing placeholder
+            const typingId = `typing-${uid()}`;
+            pendingTypingIdRef.current = typingId;
+
+            const typingMessage: Message = {
+              id: typingId,
+              content: 'Thinking…',
+              sender: 'assistant',
+              timestamp: new Date(),
+            };
+            setMessages(prev => [...prev, typingMessage]);
+
+            // Simulate AI response after a delay
+            if (generationTimeoutRef.current) {
+              clearTimeout(generationTimeoutRef.current);
+            }
+
+            generationTimeoutRef.current = setTimeout(() => {
+              const assistantMessage = simulateAssistantResponse();
+
+              setMessages(prev => {
+                // Filter out ALL typing messages and add the new response
+                const filteredMessages = prev.filter(m => !m.id.startsWith('typing-'));
+                return [...filteredMessages, assistantMessage];
+              });
+
+              // Clear the pending ref
+              pendingTypingIdRef.current = null;
+
+              // Clear generating state
+              setIsGenerating(false);
+              generationTimeoutRef.current = null;
+            }, 1200);
+          }
+        } else {
+          // Remove loading message on error
+          setMessages(prev => prev.filter(msg => msg.id !== loadingId));
+          const error = await response.json();
+          console.error('Transcription error:', error);
+          alert(error.error || 'Failed to transcribe audio');
+        }
+      } catch (error) {
+        // Remove loading message on error
+        setMessages(prev => prev.filter(msg => msg.id !== loadingId));
+        console.error('Error sending audio for transcription:', error);
+        alert('Failed to transcribe audio. Please try again.');
+      } finally {
+        // Reset recording state
+        setRecordingTime(0);
+        audioChunksRef.current = [];
+      }
+    }
+  };
+
+  const formatRecordingTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleMicrophoneClick = () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  };
+
   return (
     <div className={`h-full bg-white flex flex-col ${className}`}>
       {/* Messages Area */}
@@ -432,11 +660,13 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
                   ? handleStopGeneration
                   : inputValue.trim()
                     ? handleSendMessage
-                    : undefined
+                    : handleMicrophoneClick
               }
-              disabled={!isGenerating && !inputValue.trim()}
+              disabled={false}
               className={`absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full transition-all duration-300 ease-in-out ${
-                isGenerating || inputValue.trim()
+                isRecording
+                  ? 'bg-red-500 text-white hover:bg-red-600 shadow-md scale-110 animate-pulse'
+                  : isGenerating || inputValue.trim()
                   ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 shadow-md scale-100'
                   : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100 scale-100'
               }`}
@@ -478,11 +708,18 @@ export const ChatModule: React.FC<ChatModuleProps> = ({
 
                 {/* Microphone icon with fade transition */}
                 <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${
-                  !isGenerating && !inputValue.trim() ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                  !isGenerating && !inputValue.trim() && !isRecording ? 'opacity-100' : 'opacity-0 pointer-events-none'
                 }`}>
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
                   </svg>
+                </div>
+
+                {/* Recording indicator with time */}
+                <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${
+                  isRecording ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                }`}>
+                  <div className="w-2 h-2 bg-white rounded-full" />
                 </div>
               </div>
             </button>
