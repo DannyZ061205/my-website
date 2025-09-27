@@ -50,6 +50,10 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   const fullscreenTextareaRef = useRef<HTMLTextAreaElement>(null);  // Direct ref to fullscreen textarea
   const isDraggingRef = useRef(false);  // Track if we're in a drag operation
 
+  // Format button states
+  const [isFormatting, setIsFormatting] = useState(false);
+  const [formatStatus, setFormatStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+
   // Recording states
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -2275,11 +2279,11 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
         {/* Description - extends to bottom */}
         <div className="flex-1 flex flex-col mt-2 mb-2 min-h-0">
           {isEditingDescription ? (
-            <>
+            <div className="animate-fadeIn flex flex-col h-full">
               {/* Scrollable content container with border */}
               <div className="overflow-y-auto flex-1 border border-gray-200 rounded-xl" ref={editorRef}>
-                  {/* Formatting toolbar */}
-                  <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+                  {/* Formatting toolbar - sticky at top */}
+                  <div className="sticky top-0 z-10 flex items-center justify-between px-3 py-2.5 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-xl">
                   <div className="flex items-center gap-1">
                     {/* Heading buttons */}
                     <button
@@ -2356,6 +2360,150 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                       className="px-2 py-1 text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition-colors"
                     >
                       H3
+                    </button>
+
+                    {/* Separator button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const textarea = descriptionTextareaRef.current;
+                        if (textarea) {
+                          const start = textarea.selectionStart;
+                          const end = textarea.selectionEnd;
+                          const newText = '\n\n---\n';
+                          const newDescription = tempDescription.substring(0, start) + newText + tempDescription.substring(end);
+                          setTempDescription(newDescription);
+                          setTimeout(() => {
+                            textarea.focus();
+                            const newPosition = start + newText.length;
+                            textarea.setSelectionRange(newPosition, newPosition);
+                          }, 0);
+                        }
+                      }}
+                      className="px-2 py-1 text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition-colors"
+                      title="Insert horizontal rule"
+                    >
+                      ─
+                    </button>
+
+                    {/* Format button */}
+                    <button
+                      type="button"
+                      disabled={isFormatting || !tempDescription}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onClick={async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
+                        if (!tempDescription || isFormatting) return;
+
+                        // Delay execution to ensure event doesn't close the editor
+                        setTimeout(async () => {
+                          const textarea = descriptionTextareaRef.current;
+                          const originalText = tempDescription;
+
+                          setIsFormatting(true);
+                          setFormatStatus('loading');
+
+                          try {
+                          const response = await fetch('/api/format', {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              'Accept': 'application/json',
+                            },
+                            body: JSON.stringify({ text: originalText }),
+                            credentials: 'same-origin',
+                            redirect: 'error', // Prevent any redirects
+                          });
+
+                          // Check if response is actually JSON
+                          const contentType = response.headers.get('content-type');
+                          if (!contentType || !contentType.includes('application/json')) {
+                            console.error('Format API returned non-JSON response:', contentType);
+                            throw new Error('Invalid response from format API');
+                          }
+
+                          if (!response.ok) {
+                            const errorText = await response.text();
+                            console.error('Format API error:', response.status, errorText);
+                            throw new Error(`Format failed: ${response.status}`);
+                          }
+
+                          const data = await response.json();
+                          const formattedText = data.formattedText || originalText;
+
+                          // Update the text with the formatted version
+                          setTempDescription(formattedText);
+                          setFormatStatus('success');
+
+                          // Refocus the textarea
+                          setTimeout(() => {
+                            if (textarea) {
+                              textarea.focus();
+                              textarea.setSelectionRange(0, 0);
+                            }
+                          }, 50);
+
+                          // Reset status after animation
+                          setTimeout(() => {
+                            setFormatStatus('idle');
+                          }, 2000);
+                        } catch (error) {
+                          console.error('Error formatting text:', error);
+                          setFormatStatus('error');
+
+                          // Reset status after showing error
+                          setTimeout(() => {
+                            setFormatStatus('idle');
+                          }, 2000);
+                        } finally {
+                          setIsFormatting(false);
+                        }
+                        }, 0); // Close setTimeout
+                      }}
+                      className={`relative px-2 py-1 text-xs font-semibold rounded transition-all duration-200 ${
+                        isFormatting
+                          ? 'bg-blue-100 text-blue-600 cursor-wait'
+                          : formatStatus === 'success'
+                          ? 'bg-green-100 text-green-600'
+                          : formatStatus === 'error'
+                          ? 'bg-red-100 text-red-600'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
+                      } ${!tempDescription ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      title={
+                        isFormatting
+                          ? "Formatting..."
+                          : formatStatus === 'success'
+                          ? "Formatted successfully!"
+                          : formatStatus === 'error'
+                          ? "Formatting failed"
+                          : "Format text and math notation (AI-powered)"
+                      }
+                    >
+                      {isFormatting ? (
+                        <div className="animate-spin">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                        </div>
+                      ) : formatStatus === 'success' ? (
+                        <svg className="w-4 h-4 animate-fadeIn" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : formatStatus === 'error' ? (
+                        <svg className="w-4 h-4 animate-shake" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
+                        </svg>
+                      )}
                     </button>
 
                     <div className="w-px h-4 bg-gray-300 mx-1" />
@@ -2496,10 +2644,6 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                 {/* Recordings container */}
                 {recordings.length > 0 && (
                   <div className="border-t border-gray-200 p-4 bg-white/50 mt-2">
-                    <div className="flex items-center justify-between mb-4">
-                      <h4 className="text-sm font-semibold text-gray-700">Voice Recordings</h4>
-                      <span className="text-sm text-gray-500">{recordings.length} recording{recordings.length !== 1 ? 's' : ''}</span>
-                    </div>
                     <div className="space-y-2">
                       {recordings.map((recording, index) => (
                         <div key={recording.id} className="group relative bg-white border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-sm transition-all duration-200">
@@ -2607,7 +2751,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                   </div>
                 )}
                 </div>
-            </>
+            </div>
           ) : (
             <div className="relative w-full flex-1 flex flex-col min-h-0">
               <div className="w-full h-full animate-descriptionFadeIn overflow-hidden">
@@ -2619,17 +2763,17 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                     const initialDescription = editedEvent.description || '';
                     setTempDescription(initialDescription);
 
-                    // Auto-scroll main container to bottom if there are recordings
+                    // Auto-scroll to bottom to show recordings when entering edit mode
                     if (recordings.length > 0) {
                       setTimeout(() => {
-                        const mainContainer = mainContainerRef.current;
-                        if (mainContainer) {
-                          mainContainer.scrollTo({
-                            top: mainContainer.scrollHeight,
+                        const editor = editorRef.current;
+                        if (editor) {
+                          editor.scrollTo({
+                            top: editor.scrollHeight,
                             behavior: 'smooth'
                           });
                         }
-                      }, 100);
+                      }, 150);
                     }
 
                     setTimeout(() => {
@@ -2771,18 +2915,6 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                setIsEditingDescription(false);
-                setTempDescription('');
-              }}
-              className="px-4 py-1.5 text-xs text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-200 font-medium"
-            >
-              Cancel
-            </button>
             <button
               type="button"
               onClick={(e) => {
