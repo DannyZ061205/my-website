@@ -1954,8 +1954,8 @@ export const CalendarModule: React.FC<CalendarModuleProps> = ({
         activeElement.getAttribute('contenteditable') === 'true'
       );
 
-      // Undo/Redo should work even in input fields since they don't conflict with text editing
-      if (cmdKey) {
+      // Undo/Redo should NOT work in input fields - let them handle their own undo/redo
+      if (cmdKey && !inInputField) {
         // Undo: Cmd/Ctrl + Z
         if (e.key === 'z' && !e.shiftKey) {
           // Only prevent default and handle undo if we have history to undo
