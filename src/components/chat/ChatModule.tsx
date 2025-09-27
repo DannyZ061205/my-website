@@ -243,6 +243,14 @@ export const ChatModule: React.FC<ChatModuleProps & { onCollapse?: () => void }>
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const maxRecordingTimeRef = useRef<NodeJS.Timeout | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const silenceCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const MAX_RECORDING_TIME = 60; // 60 seconds (1 minute) auto-stop
+  const SILENCE_DURATION = 1000; // 1 second of silence before auto-stop
+  const SILENCE_THRESHOLD = 0.01; // Adjust this value to fine-tune silence detection
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -381,6 +389,22 @@ export const ChatModule: React.FC<ChatModuleProps & { onCollapse?: () => void }>
     }
   };
 
+  // Function to check audio levels for silence detection
+  const checkAudioLevel = () => {
+    if (!analyserRef.current) return 0;
+
+    const bufferLength = analyserRef.current.fftSize;
+    const dataArray = new Float32Array(bufferLength);
+    analyserRef.current.getFloatTimeDomainData(dataArray);
+
+    // Calculate RMS (Root Mean Square) for better volume detection
+    let sum = 0;
+    for (let i = 0; i < bufferLength; i++) {
+      sum += dataArray[i] * dataArray[i];
+    }
+    return Math.sqrt(sum / bufferLength);
+  };
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -388,9 +412,188 @@ export const ChatModule: React.FC<ChatModuleProps & { onCollapse?: () => void }>
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
+      // Set up audio analysis for silence detection
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      analyserRef.current = audioContextRef.current.createAnalyser();
+      analyserRef.current.fftSize = 2048;
+
+      const source = audioContextRef.current.createMediaStreamSource(stream);
+      source.connect(analyserRef.current);
+
+      // Start silence detection
+      let isSilent = false;
+      silenceCheckIntervalRef.current = setInterval(() => {
+        const audioLevel = checkAudioLevel();
+
+        if (audioLevel < SILENCE_THRESHOLD) {
+          // Audio is silent
+          if (!isSilent) {
+            isSilent = true;
+            console.log('Silence detected, starting 1-second countdown');
+
+            // Clear any existing silence timeout
+            if (silenceTimeoutRef.current) {
+              clearTimeout(silenceTimeoutRef.current);
+            }
+
+            // Start silence timer
+            silenceTimeoutRef.current = setTimeout(() => {
+              console.log('Auto-stopping due to 1 second of silence');
+              if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+                mediaRecorderRef.current.stop();
+                mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+              }
+            }, SILENCE_DURATION);
+          }
+        } else {
+          // Audio is active
+          if (isSilent) {
+            isSilent = false;
+            console.log('Sound detected, canceling silence timer');
+
+            // Cancel silence timer
+            if (silenceTimeoutRef.current) {
+              clearTimeout(silenceTimeoutRef.current);
+              silenceTimeoutRef.current = null;
+            }
+          }
+        }
+      }, 100); // Check every 100ms
+
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        // Handle the recording stop event
+        console.log('MediaRecorder stopped');
+
+        // Clear all timers and audio analysis
+        if (recordingIntervalRef.current) {
+          clearInterval(recordingIntervalRef.current);
+          recordingIntervalRef.current = null;
+        }
+        if (maxRecordingTimeRef.current) {
+          clearTimeout(maxRecordingTimeRef.current);
+          maxRecordingTimeRef.current = null;
+        }
+        if (silenceTimeoutRef.current) {
+          clearTimeout(silenceTimeoutRef.current);
+          silenceTimeoutRef.current = null;
+        }
+        if (silenceCheckIntervalRef.current) {
+          clearInterval(silenceCheckIntervalRef.current);
+          silenceCheckIntervalRef.current = null;
+        }
+
+        // Clean up audio context
+        if (audioContextRef.current) {
+          audioContextRef.current.close();
+          audioContextRef.current = null;
+          analyserRef.current = null;
+        }
+
+        setIsRecording(false);
+
+        // Add a loading message with three dots animation immediately
+        const loadingId = `loading-${uid()}`;
+        const loadingMessage: Message = {
+          id: loadingId,
+          content: '···', // Three dots for loading
+          sender: 'user',
+          timestamp: new Date(),
+          isLoading: true, // Custom flag for loading state
+        };
+        setMessages(prev => [...prev, loadingMessage]);
+
+        // Force scroll to bottom to show loading message
+        setIsAtBottom(true);
+        scrollToBottom();
+
+        // Wait a bit to ensure all audio chunks are collected
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        // Create audio blob from chunks
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+
+        // Create FormData and send to Whisper API
+        const formData = new FormData();
+        formData.append('audio', audioBlob, 'recording.webm');
+
+        try {
+          const response = await fetch('/api/transcribe', {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.text) {
+              // Replace the loading message with the actual transcribed text
+              setMessages(prev => prev.map(msg =>
+                msg.id === loadingId
+                  ? { ...msg, content: data.text, isLoading: false }
+                  : msg
+              ));
+
+              // Clear the input value since we're auto-sending
+              setInputValue('');
+
+              // Set generating state for AI response
+              setIsGenerating(true);
+
+              // Add AI typing placeholder
+              const typingId = `typing-${uid()}`;
+              pendingTypingIdRef.current = typingId;
+
+              const typingMessage: Message = {
+                id: typingId,
+                content: 'Thinking…',
+                sender: 'assistant',
+                timestamp: new Date(),
+              };
+              setMessages(prev => [...prev, typingMessage]);
+
+              // Simulate AI response after a delay
+              if (generationTimeoutRef.current) {
+                clearTimeout(generationTimeoutRef.current);
+              }
+
+              generationTimeoutRef.current = setTimeout(() => {
+                const assistantMessage = simulateAssistantResponse();
+
+                setMessages(prev => {
+                  // Filter out ALL typing messages and add the new response
+                  const filteredMessages = prev.filter(m => !m.id.startsWith('typing-'));
+                  return [...filteredMessages, assistantMessage];
+                });
+
+                // Clear the pending ref
+                pendingTypingIdRef.current = null;
+
+                // Clear generating state
+                setIsGenerating(false);
+                generationTimeoutRef.current = null;
+              }, 1200);
+            }
+          } else {
+            // Remove loading message on error
+            setMessages(prev => prev.filter(msg => msg.id !== loadingId));
+            const error = await response.json();
+            console.error('Transcription error:', error);
+            alert(error.error || 'Failed to transcribe audio');
+          }
+        } catch (error) {
+          // Remove loading message on error
+          setMessages(prev => prev.filter(msg => msg.id !== loadingId));
+          console.error('Error sending audio for transcription:', error);
+          alert('Failed to transcribe audio. Please try again.');
+        } finally {
+          // Reset recording state
+          setRecordingTime(0);
+          audioChunksRef.current = [];
         }
       };
 
@@ -402,129 +605,40 @@ export const ChatModule: React.FC<ChatModuleProps & { onCollapse?: () => void }>
       recordingIntervalRef.current = setInterval(() => {
         setRecordingTime(prev => prev + 1);
       }, 1000);
+
+      // Set auto-stop timer - this is the main auto-stop mechanism
+      console.log('Setting auto-stop timer for', MAX_RECORDING_TIME, 'seconds');
+      maxRecordingTimeRef.current = setTimeout(() => {
+        console.log('Auto-stop timer triggered after', MAX_RECORDING_TIME, 'seconds');
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+          console.log('Stopping recording via timer');
+          mediaRecorderRef.current.stop();
+          mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+        }
+      }, MAX_RECORDING_TIME * 1000);
     } catch (error) {
       console.error('Error accessing microphone:', error);
       alert('Please allow microphone access to use voice recording.');
     }
   };
 
-  const stopRecording = async () => {
-    if (mediaRecorderRef.current && isRecording) {
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      console.log('Manually stopping recording');
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-
-      // Clear the timer
-      if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current);
-        recordingIntervalRef.current = null;
-      }
-
-      setIsRecording(false);
-
-      // Add a loading message with three dots animation immediately
-      const loadingId = `loading-${uid()}`;
-      const loadingMessage: Message = {
-        id: loadingId,
-        content: '···', // Three dots for loading
-        sender: 'user',
-        timestamp: new Date(),
-        isLoading: true, // Custom flag for loading state
-      };
-      setMessages(prev => [...prev, loadingMessage]);
-
-      // Force scroll to bottom to show loading message
-      setIsAtBottom(true);
-      scrollToBottom();
-
-      // Wait a bit to ensure all audio chunks are collected
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      // Create audio blob from chunks
-      const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-
-      // Create FormData and send to Whisper API
-      const formData = new FormData();
-      formData.append('audio', audioBlob, 'recording.webm');
-
-      try {
-        const response = await fetch('/api/transcribe', {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.text) {
-            // Replace the loading message with the actual transcribed text
-            setMessages(prev => prev.map(msg =>
-              msg.id === loadingId
-                ? { ...msg, content: data.text, isLoading: false }
-                : msg
-            ));
-
-            // Clear the input value since we're auto-sending
-            setInputValue('');
-
-            // Set generating state for AI response
-            setIsGenerating(true);
-
-            // Add AI typing placeholder
-            const typingId = `typing-${uid()}`;
-            pendingTypingIdRef.current = typingId;
-
-            const typingMessage: Message = {
-              id: typingId,
-              content: 'Thinking…',
-              sender: 'assistant',
-              timestamp: new Date(),
-            };
-            setMessages(prev => [...prev, typingMessage]);
-
-            // Simulate AI response after a delay
-            if (generationTimeoutRef.current) {
-              clearTimeout(generationTimeoutRef.current);
-            }
-
-            generationTimeoutRef.current = setTimeout(() => {
-              const assistantMessage = simulateAssistantResponse();
-
-              setMessages(prev => {
-                // Filter out ALL typing messages and add the new response
-                const filteredMessages = prev.filter(m => !m.id.startsWith('typing-'));
-                return [...filteredMessages, assistantMessage];
-              });
-
-              // Clear the pending ref
-              pendingTypingIdRef.current = null;
-
-              // Clear generating state
-              setIsGenerating(false);
-              generationTimeoutRef.current = null;
-            }, 1200);
-          }
-        } else {
-          // Remove loading message on error
-          setMessages(prev => prev.filter(msg => msg.id !== loadingId));
-          const error = await response.json();
-          console.error('Transcription error:', error);
-          alert(error.error || 'Failed to transcribe audio');
-        }
-      } catch (error) {
-        // Remove loading message on error
-        setMessages(prev => prev.filter(msg => msg.id !== loadingId));
-        console.error('Error sending audio for transcription:', error);
-        alert('Failed to transcribe audio. Please try again.');
-      } finally {
-        // Reset recording state
-        setRecordingTime(0);
-        audioChunksRef.current = [];
-      }
     }
   };
 
   const formatRecordingTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const formatMaxTime = () => {
+    const mins = Math.floor(MAX_RECORDING_TIME / 60);
+    const secs = MAX_RECORDING_TIME % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
