@@ -60,6 +60,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   const [recordingStartTime, setRecordingStartTime] = useState<number>(0);
   const [recordings, setRecordings] = useState<Array<{
     id: string;
+    name?: string; // Custom name for the recording
     blob: Blob;
     duration: number;
     url: string;
@@ -71,6 +72,10 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
     isRecording?: boolean; // Add flag for currently recording
   }>>([])
   const [currentRecordingId, setCurrentRecordingId] = useState<string | null>(null);
+  const [editingRecordingId, setEditingRecordingId] = useState<string | null>(null);
+  const [tempRecordingName, setTempRecordingName] = useState<string>('');
+  const [justStoppedRecording, setJustStoppedRecording] = useState(false);
+  const lastRecordingStopTime = useRef<number>(0);
   const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
   const [playingAudio, setPlayingAudio] = useState<{ [id: string]: HTMLAudioElement }>({});
   const [showDeleteEventModal, setShowDeleteEventModal] = useState(false);
@@ -129,6 +134,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioElementsRef = useRef<{ [id: string]: HTMLAudioElement }>({});
+  const streamRef = useRef<MediaStream | null>(null);
 
   // Refs for portal dropdown triggers
   const startTimeRef = useRef<HTMLElement>(null!);
@@ -520,6 +526,19 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
       const target = e.target as Node;
       const targetElement = target as HTMLElement;
 
+      // Don't close the editor if we're recording or just finished recording
+      if (isRecording) {
+        console.log('Recording in progress - ignoring click outside');
+        return;
+      }
+
+      // Check if we just stopped recording (within last 500ms)
+      const timeSinceStop = Date.now() - lastRecordingStopTime.current;
+      if (timeSinceStop < 500) {
+        console.log('Just stopped recording - ignoring click outside');
+        return;
+      }
+
       // Check if click is inside the EventEditor component at all
       // This includes the main container and any child elements
       if (mainContainerRef.current && mainContainerRef.current.contains(target)) {
@@ -599,6 +618,11 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle keyboard events if recording is in progress
+      if (isRecording) {
+        return;
+      }
+
       if (e.key === 'Escape') {
         if (isEditingDescription && !isFullScreen) {
           // If editing description in normal mode, cancel and clear
@@ -757,10 +781,12 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
     }
   }, [isEditingDescription]);
 
+
   // Recording functions
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream; // Store the stream in ref
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
@@ -782,7 +808,14 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
         isRecording: true // Add this flag to indicate active recording
       }]);
 
-      // Auto-scroll to bottom to show the new recording
+      // If not in editing mode, enter it first
+      if (!isEditingDescription) {
+        setIsEditingDescription(true);
+        const initialDescription = editedEvent?.description || '';
+        setTempDescription(initialDescription);
+      }
+
+      // Auto-scroll to bottom to show recordings
       setTimeout(() => {
         // If in editing mode, scroll the editor container
         const scrollContainer = editorRef.current || mainContainerRef.current;
@@ -791,17 +824,6 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
             top: scrollContainer.scrollHeight,
             behavior: 'smooth'
           });
-        }
-
-        // If in fullscreen mode, scroll the appropriate container
-        if (fullScreenMode === 'editor') {
-          const fullscreenContainer = document.querySelector('.fullscreen-editor-container');
-          if (fullscreenContainer) {
-            fullscreenContainer.scrollTo({
-              top: fullscreenContainer.scrollHeight,
-              behavior: 'smooth'
-            });
-          }
         }
       }, 100);
 
@@ -823,7 +845,8 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                 blob: audioBlob,
                 duration: duration,
                 url: audioUrl,
-                isRecording: false // Recording is now complete
+                isRecording: false, // Recording is now complete
+                name: rec.name || `Rec ${prev.findIndex(r => r.id === recordingId) + 1}`
               }
             : rec
         ));
@@ -843,7 +866,11 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
         // Clear temporary recording data
         audioChunksRef.current = [];
         setCurrentRecordingId(null);
-        stream.getTracks().forEach(track => track.stop());
+        // Stop all tracks in the stream
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+          streamRef.current = null;
+        }
 
         // Enter edit mode if not already
         if (!isEditingDescription) {
@@ -902,6 +929,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
+      lastRecordingStopTime.current = Date.now(); // Track when recording stopped
 
       if (recordingIntervalRef.current) {
         clearInterval(recordingIntervalRef.current);
@@ -963,6 +991,13 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   const transcribeRecording = async (recordingId: string) => {
     const recording = recordings.find(r => r.id === recordingId);
     if (!recording) return;
+
+    // Check if blob exists (it might not exist if recording was loaded from storage)
+    if (!recording.blob || !(recording.blob instanceof Blob)) {
+      console.error('Recording blob not available. Recording may have been loaded from storage.');
+      alert('This recording cannot be transcribed. Audio data is not available for saved recordings.');
+      return;
+    }
 
     // Mark as transcribing
     setRecordings(prev => prev.map(r =>
@@ -2783,15 +2818,9 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                                 </div>
                               ) : (
                               <button
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  e.nativeEvent.stopImmediatePropagation();
-                                }}
                                 onClick={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
-                                  e.nativeEvent.stopImmediatePropagation();
                                   playRecording(recording.id);
                                 }}
                                 className={`relative flex items-center justify-center w-8 h-8 rounded-full transition-all duration-200 ${
@@ -2814,9 +2843,56 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                               </button>
                               )}
                               <div className="flex-1 flex items-center gap-3">
-                                <span className={`text-sm font-medium ${recording.isRecording ? 'text-red-600' : 'text-gray-800'}`}>
-                                  {recording.isRecording ? 'Recording...' : `Recording #${index + 1}`}
-                                </span>
+                                {editingRecordingId === recording.id ? (
+                                  <input
+                                    type="text"
+                                    value={tempRecordingName}
+                                    onChange={(e) => setTempRecordingName(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        setRecordings(prev => prev.map(r =>
+                                          r.id === recording.id
+                                            ? { ...r, name: tempRecordingName.trim() || `Rec ${index + 1}` }
+                                            : r
+                                        ));
+                                        setEditingRecordingId(null);
+                                      } else if (e.key === 'Escape') {
+                                        setEditingRecordingId(null);
+                                        setTempRecordingName('');
+                                      }
+                                    }}
+                                    onBlur={() => {
+                                      setRecordings(prev => prev.map(r =>
+                                        r.id === recording.id
+                                          ? { ...r, name: tempRecordingName.trim() || `Rec ${index + 1}` }
+                                          : r
+                                      ));
+                                      setEditingRecordingId(null);
+                                    }}
+                                    className="text-sm font-medium px-1 py-0.5 border border-blue-400 rounded outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                    style={{ width: `${tempRecordingName.length}ch` }}
+                                    autoFocus
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                ) : (
+                                  <button
+                                    className={`text-sm font-medium hover:bg-gray-100 px-1 py-0.5 rounded transition-colors ${
+                                      recording.isRecording ? 'text-red-600 cursor-default' : 'text-gray-800 cursor-text'
+                                    }`}
+                                    style={{ width: 'fit-content', display: 'inline-block' }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      // Allow editing if recording is not in progress
+                                      if (!recording.isRecording) {
+                                        setEditingRecordingId(recording.id);
+                                        setTempRecordingName(recording.name || `Rec ${index + 1}`);
+                                      }
+                                    }}
+                                  >
+                                    {recording.isRecording ? 'Recording...' : (recording.name || `Rec ${index + 1}`)}
+                                  </button>
+                                )}
                                 <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${
                                   recording.isRecording
                                     ? 'text-red-600 bg-red-100 animate-pulse'
@@ -3059,15 +3135,9 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
             {isRecording && (
               <button
                 type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  e.nativeEvent.stopImmediatePropagation();
-                }}
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  e.nativeEvent.stopImmediatePropagation();
                   stopRecording();
                 }}
                 className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg animate-pulse flex items-center gap-1.5"
@@ -3617,7 +3687,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
 
                           {/* Compact recordings sidebar in fullscreen editor */}
                           {recordings.length > 0 && fullScreenMode === 'editor' && (
-                            <div className={`fixed right-4 bottom-4 z-20 transition-opacity duration-300 ease-out ${
+                            <div id="fullscreen-recording-window" className={`fixed right-4 bottom-4 z-20 transition-opacity duration-300 ease-out ${
                               showFullscreenControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
                             }`}
                               onMouseEnter={() => {
@@ -3654,7 +3724,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                                 </div>
 
                                 {/* Recordings list - compact */}
-                                <div className="max-h-[250px] overflow-y-auto">
+                                <div id="fullscreen-recordings-list" className="max-h-[250px] overflow-y-auto">
                                   {recordings.map((recording, index) => (
                                     <div key={recording.id} className={`group border-b border-gray-100 last:border-b-0 transition-colors ${
                                       recording.isRecording
@@ -3694,11 +3764,55 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
 
                                           {/* Recording title and duration */}
                                           <div className="flex-1 flex items-center gap-2.5">
-                                            <span className={`text-sm font-medium ${
-                                              recording.isRecording ? 'text-red-600' : 'text-gray-900'
-                                            }`}>
-                                              {recording.isRecording ? 'Recording...' : `Recording #${index + 1}`}
-                                            </span>
+                                            {editingRecordingId === recording.id ? (
+                                              <input
+                                                type="text"
+                                                value={tempRecordingName}
+                                                onChange={(e) => setTempRecordingName(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    setRecordings(prev => prev.map(r =>
+                                                      r.id === recording.id
+                                                        ? { ...r, name: tempRecordingName.trim() || `Rec ${index + 1}` }
+                                                        : r
+                                                    ));
+                                                    setEditingRecordingId(null);
+                                                  } else if (e.key === 'Escape') {
+                                                    setEditingRecordingId(null);
+                                                    setTempRecordingName('');
+                                                  }
+                                                }}
+                                                onBlur={() => {
+                                                  setRecordings(prev => prev.map(r =>
+                                                    r.id === recording.id
+                                                      ? { ...r, name: tempRecordingName.trim() || `Rec ${index + 1}` }
+                                                      : r
+                                                  ));
+                                                  setEditingRecordingId(null);
+                                                }}
+                                                className="text-sm font-medium text-gray-900 px-1.5 py-0.5 border border-gray-300 rounded outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 bg-white transition-all"
+                                                style={{ width: `${tempRecordingName.length}ch`, minWidth: '60px' }}
+                                                autoFocus
+                                                onClick={(e) => e.stopPropagation()}
+                                              />
+                                            ) : (
+                                              <button
+                                                className={`text-sm font-medium hover:bg-gray-100 px-1 py-0.5 rounded transition-colors text-left ${
+                                                  recording.isRecording ? 'text-red-600 cursor-default' : 'text-gray-900 cursor-text'
+                                                }`}
+                                                style={{ width: 'fit-content', display: 'inline-block' }}
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  if (!recording.isRecording) {
+                                                    setEditingRecordingId(recording.id);
+                                                    setTempRecordingName(recording.name || `Rec ${index + 1}`);
+                                                  }
+                                                }}
+                                              >
+                                                {recording.isRecording ? 'Recording...' : (recording.name || `Rec ${index + 1}`)}
+                                              </button>
+                                            )}
                                             <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${
                                               recording.isRecording
                                                 ? 'text-red-600 bg-red-100 animate-pulse'
@@ -3998,9 +4112,11 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                           {fullScreenMode === 'editor' && (
                             <button
                               onClick={(e) => {
+                                e.preventDefault();
                                 e.stopPropagation();
                                 if (isRecording) {
                                   stopRecording();
+                                  // Don't blur to avoid focus issues
                                 } else {
                                   startRecording();
                                 }
