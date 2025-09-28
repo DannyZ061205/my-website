@@ -68,6 +68,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
     isPlaying?: boolean;
     isSummarizing?: boolean;
     summary?: string;
+    isRecording?: boolean; // Add flag for currently recording
   }>>([])
   const [currentRecordingId, setCurrentRecordingId] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
@@ -769,6 +770,41 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
       const startTime = Date.now();
       setRecordingStartTime(startTime);
 
+      // Immediately add a placeholder recording entry that shows it's currently recording
+      setRecordings(prev => [...prev, {
+        id: recordingId,
+        blob: new Blob(), // Empty blob initially
+        duration: 0,
+        url: '',
+        transcript: undefined,
+        isTranscribing: false,
+        isPlaying: false,
+        isRecording: true // Add this flag to indicate active recording
+      }]);
+
+      // Auto-scroll to bottom to show the new recording
+      setTimeout(() => {
+        // If in editing mode, scroll the editor container
+        const scrollContainer = editorRef.current || mainContainerRef.current;
+        if (scrollContainer) {
+          scrollContainer.scrollTo({
+            top: scrollContainer.scrollHeight,
+            behavior: 'smooth'
+          });
+        }
+
+        // If in fullscreen mode, scroll the appropriate container
+        if (fullScreenMode === 'editor') {
+          const fullscreenContainer = document.querySelector('.fullscreen-editor-container');
+          if (fullscreenContainer) {
+            fullscreenContainer.scrollTo({
+              top: fullscreenContainer.scrollHeight,
+              behavior: 'smooth'
+            });
+          }
+        }
+      }, 100);
+
       mediaRecorder.ondataavailable = (event) => {
         audioChunksRef.current.push(event.data);
       };
@@ -779,16 +815,18 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
         // Calculate actual duration in seconds
         const duration = Math.round((Date.now() - startTime) / 1000);
 
-        // Add new recording to the list
-        setRecordings(prev => [...prev, {
-          id: recordingId,
-          blob: audioBlob,
-          duration: duration,
-          url: audioUrl,
-          transcript: undefined,
-          isTranscribing: false,
-          isPlaying: false
-        }]);
+        // Update the existing recording entry with final data
+        setRecordings(prev => prev.map(rec =>
+          rec.id === recordingId
+            ? {
+                ...rec,
+                blob: audioBlob,
+                duration: duration,
+                url: audioUrl,
+                isRecording: false // Recording is now complete
+              }
+            : rec
+        ));
 
         // Auto-scroll to bottom to show recordings
         setTimeout(() => {
@@ -2732,9 +2770,18 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                   <div className="border-t border-gray-200 p-4 bg-white/50 mt-2">
                     <div className="space-y-2">
                       {recordings.map((recording, index) => (
-                        <div key={recording.id} className="group relative bg-white border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-sm transition-all duration-200">
+                        <div key={recording.id} className={`group relative bg-white border rounded-lg transition-all duration-200 ${
+                          recording.isRecording
+                            ? 'border-red-400 bg-red-50 animate-pulse'
+                            : 'border-gray-200 hover:border-blue-300 hover:shadow-sm'
+                        }`}>
                           <div className="flex items-center py-2 px-3">
                             <div className="flex items-center gap-3 flex-1">
+                              {recording.isRecording ? (
+                                <div className="relative flex items-center justify-center w-8 h-8 rounded-full bg-red-500 text-white animate-pulse">
+                                  <div className="absolute w-3 h-3 bg-white rounded-full"></div>
+                                </div>
+                              ) : (
                               <button
                                 onMouseDown={(e) => {
                                   e.preventDefault();
@@ -2765,9 +2812,21 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                                   </svg>
                                 )}
                               </button>
+                              )}
                               <div className="flex-1 flex items-center gap-3">
-                                <span className="text-sm font-medium text-gray-800">Recording #{index + 1}</span>
-                                <span className="text-xs text-gray-500 font-mono bg-gray-100 px-1.5 py-0.5 rounded">{formatRecordingTime(recording.duration)}</span>
+                                <span className={`text-sm font-medium ${recording.isRecording ? 'text-red-600' : 'text-gray-800'}`}>
+                                  {recording.isRecording ? 'Recording...' : `Recording #${index + 1}`}
+                                </span>
+                                <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${
+                                  recording.isRecording
+                                    ? 'text-red-600 bg-red-100 animate-pulse'
+                                    : 'text-gray-500 bg-gray-100'
+                                }`}>
+                                  {recording.isRecording
+                                    ? formatRecordingTime(recordingTime)
+                                    : formatRecordingTime(recording.duration)
+                                  }
+                                </span>
                                 {recording.transcript && (
                                   <span className="inline-flex items-center gap-1 text-xs text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full">
                                     <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
@@ -2779,7 +2838,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                               </div>
                             </div>
                             <div className="flex items-center gap-1.5">
-                              {!recording.transcript && !recording.isTranscribing && (
+                              {!recording.isRecording && !recording.transcript && !recording.isTranscribing && (
                                 <button
                                   onMouseDown={(e) => {
                                     e.preventDefault();
@@ -2810,25 +2869,27 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                                   <span>Processing</span>
                                 </div>
                               )}
-                              <button
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  e.nativeEvent.stopImmediatePropagation();
-                                }}
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  e.nativeEvent.stopImmediatePropagation();
-                                  setShowDeleteModal(recording.id);
-                                }}
-                                className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors opacity-0 group-hover:opacity-100"
-                                title="Delete recording"
-                              >
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              </button>
+                              {!recording.isRecording && (
+                                <button
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    e.nativeEvent.stopImmediatePropagation();
+                                  }}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    e.nativeEvent.stopImmediatePropagation();
+                                    setShowDeleteModal(recording.id);
+                                  }}
+                                  className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors opacity-0 group-hover:opacity-100"
+                                  title="Delete recording"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                </button>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -3556,7 +3617,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
 
                           {/* Compact recordings sidebar in fullscreen editor */}
                           {recordings.length > 0 && fullScreenMode === 'editor' && (
-                            <div className={`fixed right-4 bottom-20 z-20 transition-opacity duration-300 ease-out ${
+                            <div className={`fixed right-4 bottom-4 z-20 transition-opacity duration-300 ease-out ${
                               showFullscreenControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
                             }`}
                               onMouseEnter={() => {
@@ -3579,99 +3640,129 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                                 }, HIDE_DELAY);
                               }}
                             >
-                              <div className="bg-white backdrop-blur-sm border border-gray-200 rounded-xl shadow-lg max-h-[400px] w-[280px] overflow-hidden">
-                                <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                      <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                                      </svg>
-                                      <span className="text-sm font-semibold text-gray-700">
-                                        {recordings.length} {recordings.length === 1 ? 'Recording' : 'Recordings'}
-                                      </span>
-                                    </div>
+                              <div className="bg-white/95 backdrop-blur-sm border border-gray-200 rounded-2xl shadow-lg overflow-hidden" style={{ width: '360px' }}>
+                                {/* Header */}
+                                <div className="px-4 py-2.5 border-b border-gray-100 bg-gray-50/50">
+                                  <div className="flex items-center gap-2">
+                                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                                    </svg>
+                                    <span className="text-sm font-medium text-gray-700">
+                                      {recordings.length} {recordings.length === 1 ? 'Recording' : 'Recordings'}
+                                    </span>
                                   </div>
                                 </div>
-                                <div className="p-2 space-y-1.5 overflow-y-auto max-h-[350px]">
+
+                                {/* Recordings list - compact */}
+                                <div className="max-h-[250px] overflow-y-auto">
                                   {recordings.map((recording, index) => (
-                                    <div key={recording.id} className="group bg-white border border-gray-100 rounded-lg p-2 hover:border-gray-200 hover:shadow-sm transition-all">
-                                      <div className="flex items-center gap-2">
-                                        {/* Play button */}
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            playRecording(recording.id);
-                                          }}
-                                          className={`flex items-center justify-center w-7 h-7 rounded-full transition-all flex-shrink-0 ${
-                                            recording.isPlaying
-                                              ? 'bg-blue-500 hover:bg-blue-600'
-                                              : 'bg-gray-100 hover:bg-gray-200 border border-gray-200'
-                                          }`}
-                                        >
-                                          {recording.isPlaying ? (
-                                            <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24">
-                                              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-                                            </svg>
+                                    <div key={recording.id} className={`group border-b border-gray-100 last:border-b-0 transition-colors ${
+                                      recording.isRecording
+                                        ? 'bg-red-50 animate-pulse'
+                                        : 'bg-white hover:bg-gray-50/50'
+                                    }`}>
+                                      <div className="px-4 py-3">
+                                        <div className="flex items-center gap-2.5">
+                                          {/* Play button or recording indicator */}
+                                          {recording.isRecording ? (
+                                            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-red-500 animate-pulse flex-shrink-0">
+                                              <div className="w-3 h-3 bg-white rounded-full"></div>
+                                            </div>
                                           ) : (
-                                            <svg className="w-3.5 h-3.5 text-gray-600" fill="currentColor" viewBox="0 0 24 24">
-                                              <path d="M8 5v14l11-7z" />
-                                            </svg>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              playRecording(recording.id);
+                                            }}
+                                            className={`flex items-center justify-center w-8 h-8 rounded-full transition-all flex-shrink-0 ${
+                                              recording.isPlaying
+                                                ? 'bg-gray-700 hover:bg-gray-800'
+                                                : 'bg-gray-100 hover:bg-gray-200'
+                                            }`}
+                                          >
+                                            {recording.isPlaying ? (
+                                              <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                                              </svg>
+                                            ) : (
+                                              <svg className="w-3.5 h-3.5 text-gray-700" fill="currentColor" viewBox="0 0 24 24">
+                                                <path d="M8 5v14l11-7z" />
+                                              </svg>
+                                            )}
+                                          </button>
                                           )}
-                                        </button>
 
-                                        {/* Recording info - compact */}
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex items-center gap-1">
-                                            <span className="text-xs font-medium text-gray-700">Rec {index + 1}</span>
-                                            <span className="text-[10px] text-gray-500">({formatRecordingTime(recording.duration)})</span>
+                                          {/* Recording title and duration */}
+                                          <div className="flex-1 flex items-center gap-2.5">
+                                            <span className={`text-sm font-medium ${
+                                              recording.isRecording ? 'text-red-600' : 'text-gray-900'
+                                            }`}>
+                                              {recording.isRecording ? 'Recording...' : `Recording #${index + 1}`}
+                                            </span>
+                                            <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${
+                                              recording.isRecording
+                                                ? 'text-red-600 bg-red-100 animate-pulse'
+                                                : 'text-gray-500 bg-gray-100'
+                                            }`}>
+                                              {recording.isRecording
+                                                ? formatRecordingTime(recordingTime)
+                                                : formatRecordingTime(recording.duration)
+                                              }
+                                            </span>
                                           </div>
-                                        </div>
 
-                                        {/* Action buttons - inline */}
-                                        {/* AI Summary button - icon only with tooltip */}
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            summarizeRecording(recording.id);
-                                          }}
-                                          disabled={recording.isSummarizing}
-                                          className={`p-1.5 rounded-md transition-all flex-shrink-0 ${
-                                            recording.isSummarizing
-                                              ? 'bg-blue-100 text-blue-600 animate-pulse'
-                                              : recording.summary
-                                                ? 'bg-green-50 text-green-600 hover:bg-green-100'
-                                                : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                                          }`}
-                                          title={recording.summary ? "Summary added - Click to regenerate" : "Generate AI Summary"}
-                                        >
-                                          {recording.isSummarizing ? (
-                                            <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                            </svg>
-                                          ) : recording.summary ? (
+                                          {/* Status badges and AI button container */}
+                                          <div className="flex items-center">
+                                            {recording.transcript && (
+                                              <span className="inline-flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-md">
+                                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                                </svg>
+                                                <span>Transcribed</span>
+                                              </span>
+                                            )}
+                                            {recording.isTranscribing && (
+                                              <span className="inline-flex items-center gap-1 text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">
+                                                <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                </svg>
+                                                <span>Processing</span>
+                                              </span>
+                                            )}
+                                            {!recording.isRecording && !recording.transcript && !recording.isTranscribing && (
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  transcribeRecording(recording.id);
+                                                }}
+                                                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 rounded-md transition-all duration-200"
+                                                title="Generate AI transcript"
+                                              >
+                                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                                  <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+                                                </svg>
+                                                <span>AI</span>
+                                              </button>
+                                            )}
+                                          </div>
+
+                                          {/* Delete button */}
+                                          {!recording.isRecording && (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setShowDeleteModal(recording.id);
+                                            }}
+                                            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all flex-shrink-0"
+                                            title="Delete Recording"
+                                          >
                                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                             </svg>
-                                          ) : (
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                                            </svg>
+                                          </button>
                                           )}
-                                        </button>
-
-                                        {/* Delete button - icon only */}
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setShowDeleteModal(recording.id);
-                                          }}
-                                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-all flex-shrink-0"
-                                          title="Delete Recording"
-                                        >
-                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                          </svg>
-                                        </button>
+                                        </div>
                                       </div>
                                     </div>
                                   ))}
