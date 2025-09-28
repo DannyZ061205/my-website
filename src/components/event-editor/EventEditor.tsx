@@ -2969,7 +2969,24 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
               </svg>
               Expand
             </button>
-
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isEditingDescription) {
+                  updateEvent('description', tempDescription);
+                  setIsEditingDescription(false);
+                  setTempDescription('');
+                }
+              }}
+              className="px-4 py-1.5 text-xs bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 font-medium flex items-center gap-1.5 shadow-sm"
+              title="Save notes (Cmd+Enter)"
+            >
+              Save
+              <span className="text-[10px] opacity-90 font-normal">(⌘↵)</span>
+            </button>
             {!isRecording && (
               <button
                 type="button"
@@ -2984,10 +3001,10 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                   e.nativeEvent.stopImmediatePropagation();
                   startRecording();
                 }}
-                className="group flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 hover:border-red-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 shadow-sm hover:shadow"
+                className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 hover:border-red-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 shadow-sm hover:shadow flex items-center gap-1.5"
                 title="Start voice recording"
               >
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M12 15c1.66 0 3-1.34 3-3V6c0-1.66-1.34-3-3-3S9 4.34 9 6v6c0 1.66 1.34 3 3 3z"/>
                   <path d="M17 12c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
                 </svg>
@@ -3008,32 +3025,14 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                   e.nativeEvent.stopImmediatePropagation();
                   stopRecording();
                 }}
-                className="group flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg animate-pulse"
+                className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg animate-pulse flex items-center gap-1.5"
                 title="Stop recording"
               >
-                <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
-                <span>Stop Record</span>
+                <div className="w-2.5 h-2.5 bg-white rounded-full animate-pulse"></div>
+                <span>Stop</span>
                 <span className="text-[10px] opacity-80">{formatRecordingTime(recordingTime)}</span>
               </button>
             )}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (isEditingDescription) {
-                  updateEvent('description', tempDescription);
-                  setIsEditingDescription(false);
-                  setTempDescription('');
-                }
-              }}
-              className="px-4 py-1.5 text-xs bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 font-medium flex items-center gap-1.5 shadow-sm"
-              title="Save notes (Cmd+Enter)"
-            >
-              Confirm
-              <span className="text-[10px] opacity-90 font-normal">(⌘↵)</span>
-            </button>
           </div>
         </div>
         )}
