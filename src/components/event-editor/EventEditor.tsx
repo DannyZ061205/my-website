@@ -2971,22 +2971,6 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
             </button>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (isEditingDescription) {
-                  updateEvent('description', tempDescription);
-                  setIsEditingDescription(false);
-                  setTempDescription('');
-                }
-              }}
-              className="px-4 py-1.5 text-xs bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 font-medium flex items-center gap-1.5 shadow-sm"
-              title="Save notes (Cmd+Enter)"
-            >
-              Save
-              <span className="text-[10px] opacity-90 font-normal">(⌘↵)</span>
-            </button>
             {!isRecording && (
               <button
                 type="button"
@@ -3033,6 +3017,22 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                 <span className="text-[10px] opacity-80">{formatRecordingTime(recordingTime)}</span>
               </button>
             )}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isEditingDescription) {
+                  updateEvent('description', tempDescription);
+                  setIsEditingDescription(false);
+                  setTempDescription('');
+                }
+              }}
+              className="px-4 py-1.5 text-xs bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 font-medium flex items-center gap-1.5 shadow-sm"
+              title="Save notes (Cmd+Enter)"
+            >
+              Save
+              <span className="text-[10px] opacity-90 font-normal">(⌘↵)</span>
+            </button>
           </div>
         </div>
         )}
