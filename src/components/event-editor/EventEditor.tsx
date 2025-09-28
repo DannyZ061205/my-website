@@ -817,13 +817,24 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
 
       // Auto-scroll to bottom to show recordings
       setTimeout(() => {
-        // If in editing mode, scroll the editor container
-        const scrollContainer = editorRef.current || mainContainerRef.current;
-        if (scrollContainer) {
-          scrollContainer.scrollTo({
-            top: scrollContainer.scrollHeight,
-            behavior: 'smooth'
-          });
+        // If in fullscreen mode, scroll the recordings list container
+        if (fullScreenMode === 'editor') {
+          const recordingsList = document.getElementById('fullscreen-recordings-list');
+          if (recordingsList) {
+            recordingsList.scrollTo({
+              top: recordingsList.scrollHeight,
+              behavior: 'smooth'
+            });
+          }
+        } else {
+          // If in normal editing mode, scroll the editor container
+          const scrollContainer = editorRef.current || mainContainerRef.current;
+          if (scrollContainer) {
+            scrollContainer.scrollTo({
+              top: scrollContainer.scrollHeight,
+              behavior: 'smooth'
+            });
+          }
         }
       }, 100);
 
@@ -2545,126 +2556,6 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                       ─
                     </button>
 
-                    {/* Format button */}
-                    <button
-                      type="button"
-                      disabled={isFormatting || !tempDescription}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                      onClick={async (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.nativeEvent.stopImmediatePropagation();
-                        if (!tempDescription || isFormatting) return;
-
-                        // Delay execution to ensure event doesn't close the editor
-                        setTimeout(async () => {
-                          const textarea = descriptionTextareaRef.current;
-                          const originalText = tempDescription;
-
-                          setIsFormatting(true);
-                          setFormatStatus('loading');
-
-                          try {
-                          const response = await fetch('/api/format', {
-                            method: 'POST',
-                            headers: {
-                              'Content-Type': 'application/json',
-                              'Accept': 'application/json',
-                            },
-                            body: JSON.stringify({ text: originalText }),
-                            credentials: 'same-origin',
-                            redirect: 'error', // Prevent any redirects
-                          });
-
-                          // Check if response is actually JSON
-                          const contentType = response.headers.get('content-type');
-                          if (!contentType || !contentType.includes('application/json')) {
-                            console.error('Format API returned non-JSON response:', contentType);
-                            throw new Error('Invalid response from format API');
-                          }
-
-                          if (!response.ok) {
-                            const errorText = await response.text();
-                            console.error('Format API error:', response.status, errorText);
-                            throw new Error(`Format failed: ${response.status}`);
-                          }
-
-                          const data = await response.json();
-                          const formattedText = data.formattedText || originalText;
-
-                          // Update the text with the formatted version
-                          setTempDescription(formattedText);
-                          setFormatStatus('success');
-
-                          // Refocus the textarea
-                          setTimeout(() => {
-                            if (textarea) {
-                              textarea.focus();
-                              textarea.setSelectionRange(0, 0);
-                            }
-                          }, 50);
-
-                          // Reset status after animation
-                          setTimeout(() => {
-                            setFormatStatus('idle');
-                          }, 2000);
-                        } catch (error) {
-                          console.error('Error formatting text:', error);
-                          setFormatStatus('error');
-
-                          // Reset status after showing error
-                          setTimeout(() => {
-                            setFormatStatus('idle');
-                          }, 2000);
-                        } finally {
-                          setIsFormatting(false);
-                        }
-                        }, 0); // Close setTimeout
-                      }}
-                      className={`relative px-2 py-1 text-xs font-semibold rounded transition-all duration-200 ${
-                        isFormatting
-                          ? 'bg-blue-100 text-blue-600 cursor-wait'
-                          : formatStatus === 'success'
-                          ? 'bg-green-100 text-green-600'
-                          : formatStatus === 'error'
-                          ? 'bg-red-100 text-red-600'
-                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
-                      } ${!tempDescription ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      title={
-                        isFormatting
-                          ? "Formatting..."
-                          : formatStatus === 'success'
-                          ? "Formatted successfully!"
-                          : formatStatus === 'error'
-                          ? "Formatting failed"
-                          : "Format text and math notation (AI-powered)"
-                      }
-                    >
-                      {isFormatting ? (
-                        <div className="animate-spin">
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                          </svg>
-                        </div>
-                      ) : formatStatus === 'success' ? (
-                        <svg className="w-4 h-4 animate-fadeIn" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      ) : formatStatus === 'error' ? (
-                        <svg className="w-4 h-4 animate-shake" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      ) : (
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
-                        </svg>
-                      )}
-                    </button>
-
                     <div className="w-px h-4 bg-gray-300 mx-1" />
 
                     {/* Text formatting buttons */}
@@ -2767,6 +2658,136 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                       title="Numbered list"
                     >
                       #
+                    </button>
+
+                    <div className="w-px h-4 bg-gray-300 mx-1" />
+
+                    {/* AI Format button - cool techy design at rightmost position */}
+                    <button
+                      type="button"
+                      disabled={isFormatting || !tempDescription}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onClick={async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
+                        if (!tempDescription || isFormatting) return;
+
+                        // Delay execution to ensure event doesn't close the editor
+                        setTimeout(async () => {
+                          const textarea = descriptionTextareaRef.current;
+                          const originalText = tempDescription;
+
+                          setIsFormatting(true);
+                          setFormatStatus('loading');
+
+                          try {
+                          const response = await fetch('/api/format', {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              'Accept': 'application/json',
+                            },
+                            body: JSON.stringify({ text: originalText }),
+                            credentials: 'same-origin',
+                            redirect: 'error', // Prevent any redirects
+                          });
+
+                          // Check if response is actually JSON
+                          const contentType = response.headers.get('content-type');
+                          if (!contentType || !contentType.includes('application/json')) {
+                            console.error('Format API returned non-JSON response:', contentType);
+                            throw new Error('Invalid response from format API');
+                          }
+
+                          if (!response.ok) {
+                            const errorText = await response.text();
+                            console.error('Format API error:', response.status, errorText);
+                            throw new Error(`Format failed: ${response.status}`);
+                          }
+
+                          const data = await response.json();
+                          const formattedText = data.formattedText || originalText;
+
+                          // Update the text with the formatted version
+                          setTempDescription(formattedText);
+                          setFormatStatus('success');
+
+                          // Refocus the textarea
+                          setTimeout(() => {
+                            if (textarea) {
+                              textarea.focus();
+                              textarea.setSelectionRange(0, 0);
+                            }
+                          }, 50);
+
+                          // Reset status after animation
+                          setTimeout(() => {
+                            setFormatStatus('idle');
+                          }, 2000);
+                        } catch (error) {
+                          console.error('Error formatting text:', error);
+                          setFormatStatus('error');
+
+                          // Reset status after showing error
+                          setTimeout(() => {
+                            setFormatStatus('idle');
+                          }, 2000);
+                        } finally {
+                          setIsFormatting(false);
+                        }
+                        }, 0); // Close setTimeout
+                      }}
+                      className={`relative px-2 py-1 text-xs font-medium rounded transition-all duration-200 flex items-center justify-center ${
+                        isFormatting
+                          ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white animate-pulse'
+                          : formatStatus === 'success'
+                          ? 'bg-gradient-to-r from-green-500 to-teal-500 text-white'
+                          : formatStatus === 'error'
+                          ? 'bg-red-500 text-white'
+                          : 'bg-gradient-to-r from-purple-50 to-blue-50 text-purple-700 hover:from-purple-100 hover:to-blue-100 border border-purple-200'
+                      } ${!tempDescription ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      title={
+                        isFormatting
+                          ? "AI is organizing your text..."
+                          : formatStatus === 'success'
+                          ? "Successfully formatted!"
+                          : formatStatus === 'error'
+                          ? "Formatting failed"
+                          : "AI-powered text organization"
+                      }
+                    >
+                      {isFormatting ? (
+                        <>
+                          <div className="animate-spin">
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                          </div>
+                        </>
+                      ) : formatStatus === 'success' ? (
+                        <>
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </>
+                      ) : formatStatus === 'error' ? (
+                        <>
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a1.5 1.5 0 00-1.006-1.006L15.75 7.5l1.035-.259a1.5 1.5 0 001.006-1.006L18 5.25l.259 1.035a1.5 1.5 0 001.006 1.006L20.25 7.5l-1.035.259a1.5 1.5 0 00-1.006 1.006zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+                          </svg>
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>
@@ -3257,15 +3278,6 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                           </div>
                         </div>
 
-                        <button
-                          onClick={() => setIsFullScreen(false)}
-                          className="p-2.5 bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-all duration-200"
-                          title="Exit fullscreen (Esc)"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
                       </div>
 
                       {/* Formatting toolbar for editor mode */}
@@ -3532,6 +3544,119 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                             title="Numbered list"
                           >
                             #
+                          </button>
+
+                          <div className="w-px h-5 bg-gray-300 mx-1" />
+
+                          {/* AI Format button - rightmost position */}
+                          <button
+                            type="button"
+                            disabled={isFormatting || !tempDescription}
+                            onClick={async (e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (!tempDescription || isFormatting) return;
+
+                              const originalText = tempDescription;
+                              setIsFormatting(true);
+                              setFormatStatus('loading');
+
+                              try {
+                                const response = await fetch('/api/format', {
+                                  method: 'POST',
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json',
+                                  },
+                                  body: JSON.stringify({ text: originalText }),
+                                  credentials: 'same-origin',
+                                  redirect: 'error',
+                                });
+
+                                const contentType = response.headers.get('content-type');
+                                if (!contentType || !contentType.includes('application/json')) {
+                                  console.error('Format API returned non-JSON response:', contentType);
+                                  throw new Error('Invalid response from format API');
+                                }
+
+                                if (!response.ok) {
+                                  const errorText = await response.text();
+                                  console.error('Format API error:', response.status, errorText);
+                                  throw new Error(`Format failed: ${response.status}`);
+                                }
+
+                                const data = await response.json();
+                                const formattedText = data.formattedText || originalText;
+
+                                setTempDescription(formattedText);
+                                setFormatStatus('success');
+
+                                // Reset status after animation
+                                setTimeout(() => {
+                                  setFormatStatus('idle');
+                                }, 2000);
+                              } catch (error) {
+                                console.error('Error formatting text:', error);
+                                setFormatStatus('error');
+
+                                setTimeout(() => {
+                                  setFormatStatus('idle');
+                                }, 2000);
+                              } finally {
+                                setIsFormatting(false);
+                              }
+                            }}
+                            className={`relative px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 flex items-center gap-1.5 ${
+                              isFormatting
+                                ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white animate-pulse'
+                                : formatStatus === 'success'
+                                ? 'bg-gradient-to-r from-green-500 to-teal-500 text-white'
+                                : formatStatus === 'error'
+                                ? 'bg-red-500 text-white'
+                                : 'bg-gradient-to-r from-purple-50 to-blue-50 text-purple-700 hover:from-purple-100 hover:to-blue-100 border border-purple-200'
+                            } ${!tempDescription ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            title={
+                              isFormatting
+                                ? "AI is organizing your text..."
+                                : formatStatus === 'success'
+                                ? "Successfully formatted!"
+                                : formatStatus === 'error'
+                                ? "Formatting failed"
+                                : "AI-powered text organization"
+                            }
+                          >
+                            {isFormatting ? (
+                              <>
+                                <div className="animate-spin">
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                  </svg>
+                                </div>
+                                <span className="text-xs">Processing</span>
+                              </>
+                            ) : formatStatus === 'success' ? (
+                              <>
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                <span className="text-xs">Done!</span>
+                              </>
+                            ) : formatStatus === 'error' ? (
+                              <>
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                                <span className="text-xs">Error</span>
+                              </>
+                            ) : (
+                              <>
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a1.5 1.5 0 00-1.006-1.006L15.75 7.5l1.035-.259a1.5 1.5 0 001.006-1.006L18 5.25l.259 1.035a1.5 1.5 0 001.006 1.006L20.25 7.5l-1.035.259a1.5 1.5 0 00-1.006 1.006zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+                                </svg>
+                                <span className="text-xs font-semibold">AI Format</span>
+                              </>
+                            )}
                           </button>
                         </div>
                       )}
@@ -4043,72 +4168,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                             }, HIDE_DELAY);
                           }}
                         >
-                          <button
-                            onMouseDown={(e) => {
-                              // Prevent all default behaviors
-                              e.preventDefault();
-                              e.stopPropagation();
-
-                              // Mark drag operation as started
-                              isDraggingRef.current = true;
-
-                              // Save the current textarea value
-                              savedDescriptionRef.current = tempDescription;
-
-                              // Make textarea completely non-interactive during drag
-                              if (fullscreenTextareaRef.current) {
-                                const textarea = fullscreenTextareaRef.current;
-                                // Disable all interactions
-                                textarea.style.userSelect = 'none';
-                                textarea.style.webkitUserSelect = 'none';
-                                textarea.style.pointerEvents = 'none';
-                                // Clear any selection
-                                window.getSelection()?.removeAllRanges();
-                                // Don't change cursor position, just remove selection
-                                // Mark as read-only temporarily
-                                textarea.readOnly = true;
-                              }
-                            }}
-                            onMouseUp={(e) => {
-                              e.stopPropagation();
-
-                              // Use a small delay to ensure all browser events complete
-                              setTimeout(() => {
-                                isDraggingRef.current = false;
-
-                                if (fullscreenTextareaRef.current) {
-                                  const textarea = fullscreenTextareaRef.current;
-
-                                  // Re-enable the textarea
-                                  textarea.style.userSelect = 'text';
-                                  textarea.style.webkitUserSelect = 'text';
-                                  textarea.style.pointerEvents = 'auto';
-                                  textarea.readOnly = false;
-
-                                  // Check and restore content if lost
-                                  if (tempDescription === '' && savedDescriptionRef.current !== '') {
-                                    setTempDescription(savedDescriptionRef.current);
-                                  }
-
-                                  // Ensure textarea is focused and ready
-                                  textarea.focus();
-                                }
-                              }, 50);
-                            }}
-                            onClick={() => {
-                              // Don't clear tempDescription when just closing fullscreen
-                              // The user might want to continue editing in normal mode
-                              setIsFullScreen(false);
-                              setFullScreenMode('editor');
-                              // Don't clear tempDescription here
-                            }}
-                            className="px-5 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all duration-200 select-none"
-                            style={{ userSelect: 'none' }}
-                          >
-                            Cancel
-                          </button>
-
-                          {/* Record button for fullscreen mode */}
+{/* Record button for fullscreen mode */}
                           {fullScreenMode === 'editor' && (
                             <button
                               onClick={(e) => {
