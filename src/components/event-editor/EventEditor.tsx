@@ -510,7 +510,20 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
       const target = e.target as Node;
       const targetElement = target as HTMLElement;
 
-      // If click is inside the main editor, ignore
+      // Check if click is inside the EventEditor component at all
+      // This includes the main container and any child elements
+      if (mainContainerRef.current && mainContainerRef.current.contains(target)) {
+        console.log('Click inside EventEditor main container - ignoring');
+        return;
+      }
+
+      // Also check if the target has a parent that's the EventEditor
+      const eventEditorParent = targetElement.closest('[data-event-editor-container="true"]');
+      if (eventEditorParent) {
+        console.log('Click inside EventEditor via data attribute check - ignoring');
+        return;
+      }
+
       if (editorRef.current && editorRef.current.contains(target)) {
         return;
       }
@@ -1123,6 +1136,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
   return (
     <div
       ref={mainContainerRef}
+      data-event-editor-container="true"
       className={`${className} bg-white h-full border-l ${isNewEvent && !editedEvent.title ? 'border-yellow-400 animate-pulse' : 'border-gray-200'} p-4 relative z-40 flex flex-col overflow-y-auto`}
       onClick={(e) => {
         // If editing description and clicking on blank space within the editor, save it
@@ -2277,7 +2291,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
         </div>
 
         {/* Description - extends to bottom */}
-        <div className="flex-1 flex flex-col mt-2 mb-2 min-h-0">
+        <div className={`flex-1 flex flex-col mt-2 ${isEditingDescription ? 'mb-2' : 'mb-0'} min-h-0`}>
           {isEditingDescription ? (
             <div className="animate-fadeIn flex flex-col h-full">
               {/* Scrollable content container with border */}
@@ -2782,7 +2796,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                       }
                     }, 50);
                   }}
-                  className="group w-full h-full bg-gradient-to-br from-gray-50 via-white to-gray-50 border border-gray-200 hover:border-blue-300 rounded-xl px-4 py-3.5 cursor-text transition-all duration-300 overflow-y-auto markdown-content hover:shadow-md hover:from-blue-50/30 hover:via-white hover:to-blue-50/30 relative"
+                  className="group w-full h-full bg-gradient-to-br from-gray-50 via-white to-gray-50 border border-gray-200 hover:border-blue-300 rounded-xl px-4 pt-3.5 pb-4 cursor-text transition-all duration-300 overflow-y-auto markdown-content hover:shadow-md hover:from-blue-50/30 hover:via-white hover:to-blue-50/30 relative"
                   tabIndex={-1}
                   role="button"
                   aria-label="Click to edit description"
@@ -2833,14 +2847,34 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                       </div>
                     </div>
                   )}
+
+                  {/* Recording indicator in preview mode */}
+                  {recordings.length > 0 && (
+                    <div className="absolute bottom-3 right-3 flex items-center gap-2 bg-white/95 backdrop-blur-sm border border-gray-200 rounded-lg px-3 py-2 shadow-sm">
+                      <div className="relative">
+                        <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M12 15c1.66 0 3-1.34 3-3V6c0-1.66-1.34-3-3-3S9 4.34 9 6v6c0 1.66 1.34 3 3 3z" />
+                          <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+                        </svg>
+                        <div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-600 rounded-full animate-pulse" />
+                      </div>
+                      <span className="text-xs font-medium text-gray-700">
+                        {recordings.length} {recordings.length === 1 ? 'recording' : 'recordings'}
+                      </span>
+                      <span className="text-[10px] text-gray-500">
+                        • Click to edit & play
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           )}
         </div>
 
-        {/* Action bar - always at bottom */}
-        <div className="h-[28px] flex items-end justify-between px-0 -mb-1 bg-white">
+        {/* Action bar - only show in editing mode */}
+        {isEditingDescription && (
+          <div className="h-[28px] flex items-end justify-between px-0 -mb-1 bg-white">
           <div className="flex items-center gap-2">
             <button
               onClick={(e) => {
@@ -2933,6 +2967,7 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
             </button>
           </div>
         </div>
+        )}
 
         {/* Full Screen Editor Modal (via portal) */}
         {mounted && isFullScreen
