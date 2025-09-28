@@ -2850,19 +2850,16 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
 
                   {/* Recording indicator in preview mode */}
                   {recordings.length > 0 && (
-                    <div className="absolute bottom-3 right-3 flex items-center gap-2 bg-white/95 backdrop-blur-sm border border-gray-200 rounded-lg px-3 py-2 shadow-sm">
-                      <div className="relative">
-                        <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M12 15c1.66 0 3-1.34 3-3V6c0-1.66-1.34-3-3-3S9 4.34 9 6v6c0 1.66 1.34 3 3 3z" />
-                          <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
-                        </svg>
-                        <div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-600 rounded-full animate-pulse" />
-                      </div>
-                      <span className="text-xs font-medium text-gray-700">
+                    <div className="absolute bottom-3 right-3 flex items-center gap-1.5 bg-gray-50/90 backdrop-blur-sm border border-gray-100 rounded-full px-2.5 py-1.5">
+                      <svg className="w-3.5 h-3.5 text-gray-500" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 15c1.66 0 3-1.34 3-3V6c0-1.66-1.34-3-3-3S9 4.34 9 6v6c0 1.66 1.34 3 3 3z" />
+                        <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+                      </svg>
+                      <span className="text-[11px] text-gray-600">
                         {recordings.length} {recordings.length === 1 ? 'recording' : 'recordings'}
                       </span>
-                      <span className="text-[10px] text-gray-500">
-                        • Click to edit & play
+                      <span className="text-[10px] text-gray-400 ml-0.5">
+                        • Edit to play
                       </span>
                     </div>
                   )}
