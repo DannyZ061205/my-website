@@ -878,18 +878,18 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
           const initialDescription = editedEvent?.description || '';
           setTempDescription(initialDescription);
 
-          // Auto-scroll to bottom if there are recordings
-          if (recordings.length > 0) {
-            setTimeout(() => {
-              const editor = editorRef.current;
-              if (editor) {
-                editor.scrollTo({
-                  top: editor.scrollHeight,
-                  behavior: 'smooth'
-                });
-              }
-            }, 100);
-          }
+          // Don't auto-scroll when stopping recording so user can see the "Transcribed" badge
+          // if (recordings.length > 0) {
+          //   setTimeout(() => {
+          //     const editor = editorRef.current;
+          //     if (editor) {
+          //       editor.scrollTo({
+          //         top: editor.scrollHeight,
+          //         behavior: 'smooth'
+          //       });
+          //     }
+          //   }, 100);
+          // }
 
           if (editedEvent?.id && descriptionHistoriesStore.has(editedEvent.id)) {
             const stored = descriptionHistoriesStore.get(editedEvent.id)!;
@@ -2903,17 +2903,17 @@ export const EventEditor: React.FC<EventEditorProps> = memo(({
                                     : formatRecordingTime(recording.duration)
                                   }
                                 </span>
-                                {recording.transcript && (
-                                  <span className="inline-flex items-center gap-1 text-xs text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full">
-                                    <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
-                                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                    </svg>
-                                    <span className="text-[10px]">Transcribed</span>
-                                  </span>
-                                )}
                               </div>
                             </div>
                             <div className="flex items-center gap-1.5">
+                              {recording.transcript && (
+                                <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-green-600 bg-green-50 rounded">
+                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                  </svg>
+                                  <span>Transcribed</span>
+                                </span>
+                              )}
                               {!recording.isRecording && !recording.transcript && !recording.isTranscribing && (
                                 <button
                                   onMouseDown={(e) => {
